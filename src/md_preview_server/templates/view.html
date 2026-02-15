@@ -2,6 +2,15 @@
 
 {% block title %}{{ filename }} - MD Preview{% endblock %}
 
+{% block extra_head %}
+<!-- CodeMirror 6 via CDN (loaded only on view pages) -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@codemirror/view@6/dist/index.css">
+<style>
+    .cm-editor { height: 100%; }
+    .cm-editor .cm-scroller { overflow: auto; }
+</style>
+{% endblock %}
+
 {% macro render_tree(tree, prefix='', current='') %}
 <ul class="file-tree">
     {% for name in tree.keys()|sort %}
@@ -15,9 +24,13 @@
             {{ render_tree(node, prefix ~ name ~ '/', current) }}
         </li>
         {% else %}
-        <li class="file {% if node == current %}active{% endif %}">
+        <li class="file {% if node == current %}active{% endif %}" data-path="{{ node }}">
             <span class="icon file-icon"></span>
             <a href="{{ url_for('view_file', filepath=node) }}">{{ name }}</a>
+            <span class="file-actions">
+                <button class="file-action-btn" data-action="rename" data-path="{{ node }}" title="Rename">&#x270F;</button>
+                <button class="file-action-btn" data-action="delete" data-path="{{ node }}" title="Delete">&#x2716;</button>
+            </span>
         </li>
         {% endif %}
     {% endfor %}
@@ -47,15 +60,39 @@
             <span>{{ part }}</span>
         {% endif %}
     {% endfor %}
+    <button class="btn btn-sm btn-edit-toggle" id="edit-toggle-btn">Edit</button>
 </nav>
-<article class="markdown-body">
+
+<!-- View mode -->
+<article class="markdown-body" id="view-container">
     {{ content|safe }}
 </article>
+
+<!-- Editor mode (hidden by default) -->
+<div class="editor-container" id="editor-container" style="display:none;">
+    <div class="editor-toolbar">
+        <div class="editor-toolbar-left">
+            <span class="editor-status" id="editor-status">Editing</span>
+        </div>
+        <div class="editor-toolbar-right">
+            <button class="btn btn-sm btn-primary" id="save-btn" title="Ctrl+S">Save</button>
+        </div>
+    </div>
+    <div class="split-pane">
+        <div class="editor-pane" id="editor-pane"></div>
+        <div class="split-divider" id="split-divider"></div>
+        <div class="preview-pane">
+            <article class="markdown-body" id="live-preview"></article>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
 <script src="{{ url_for('static', filename='js/live-reload.js') }}"></script>
+<script src="{{ url_for('static', filename='js/editor.js') }}"></script>
 <script>
     initLiveReload("{{ filepath }}");
+    initEditor("{{ filepath }}");
 </script>
 {% endblock %}

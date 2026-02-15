@@ -6,7 +6,10 @@
       "mcp__plugin_context7_context7__query-docs",
       "Bash(git add:*)",
       "Bash(git commit -m \"$\\(cat <<''EOF''\nAdd markdown preview server with live reload\n\nFlask-based local server that renders markdown files with syntax\nhighlighting, a file browser sidebar, and SSE-powered auto-refresh\non file changes. Includes tests, example files, and GitHub-flavored styling.\n\nCo-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>\nEOF\n\\)\")",
-      "Bash(git push:*)"
+      "Bash(git push:*)",
+      "Bash(uv run pytest:*)",
+      "Bash(uv sync:*)",
+      "Bash(uv pip install:*)"
     ]
   }
 }

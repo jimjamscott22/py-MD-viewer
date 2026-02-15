@@ -15,9 +15,13 @@
             {{ render_tree(node, prefix ~ name ~ '/') }}
         </li>
         {% else %}
-        <li class="file">
+        <li class="file" data-path="{{ node }}">
             <span class="icon file-icon"></span>
             <a href="{{ url_for('view_file', filepath=node) }}">{{ name }}</a>
+            <span class="file-actions">
+                <button class="file-action-btn" data-action="rename" data-path="{{ node }}" title="Rename">&#x270F;</button>
+                <button class="file-action-btn" data-action="delete" data-path="{{ node }}" title="Delete">&#x2716;</button>
+            </span>
         </li>
         {% endif %}
     {% endfor %}
@@ -38,7 +42,7 @@
 {% block content %}
 <div class="welcome">
     <h1>Markdown Preview Server</h1>
-    <p>Select a markdown file from the sidebar to preview it.</p>
+    <p>Select a markdown file from the sidebar to preview it, or drag & drop files to upload.</p>
 
     {% if tree %}
     <div class="file-list-main">
@@ -49,7 +53,7 @@
     <div class="empty-state">
         <h2>No Markdown Files Found</h2>
         <p>No <code>.md</code> files were found in the current directory.</p>
-        <p>Create a markdown file and it will appear here automatically.</p>
+        <p>Create a markdown file or drag & drop one here.</p>
     </div>
     {% endif %}
 </div>

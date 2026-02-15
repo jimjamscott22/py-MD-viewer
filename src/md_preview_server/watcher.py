@@ -54,3 +54,9 @@ def start_watcher(base_dir: Path, callback: Callable[[str], None]) -> Observer:
     observer.daemon = True
     observer.start()
     return observer
+
+
+def stop_watcher(observer: Observer) -> None:
+    """Stop a running file watcher."""
+    observer.stop()
+    observer.join(timeout=2)

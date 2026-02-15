@@ -12,17 +12,130 @@
     <nav class="sidebar" id="sidebar">
         <div class="sidebar-header">
             <a href="{{ url_for('index') }}" class="logo">MD Preview</a>
-            <button class="sidebar-toggle" id="sidebar-toggle" aria-label="Toggle sidebar">
-                <span></span><span></span><span></span>
-            </button>
+            <div class="sidebar-header-buttons">
+                <button class="icon-btn" id="new-file-btn" title="New file">+</button>
+                <button class="icon-btn" id="dir-picker-btn" title="Change directory">&#x1F4C2;</button>
+                <button class="sidebar-toggle" id="sidebar-toggle" aria-label="Toggle sidebar">
+                    <span></span><span></span><span></span>
+                </button>
+            </div>
+        </div>
+        <div class="sidebar-search">
+            <input type="text" id="search-input" placeholder="Search files..." autocomplete="off">
         </div>
         <div class="sidebar-content">
-            {% block sidebar %}{% endblock %}
+            <div class="tree-controls">
+                <button id="expand-all-btn" class="tree-ctrl-btn" title="Expand all">Expand</button>
+                <button id="collapse-all-btn" class="tree-ctrl-btn" title="Collapse all">Collapse</button>
+            </div>
+            <div id="sidebar-tree">
+                {% block sidebar %}{% endblock %}
+            </div>
+            <div id="search-results" class="search-results" style="display:none;"></div>
         </div>
     </nav>
     <main class="content">
         {% block content %}{% endblock %}
     </main>
+
+    <!-- New File Modal -->
+    <div class="modal-overlay" id="new-file-modal" style="display:none;">
+        <div class="modal">
+            <div class="modal-header">
+                <h3>Create New File</h3>
+                <button class="modal-close" data-modal="new-file-modal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <label for="new-file-path">File path (relative):</label>
+                <input type="text" id="new-file-path" placeholder="e.g. notes/my-note.md">
+                <label for="new-file-content">Initial content (optional):</label>
+                <textarea id="new-file-content" rows="4" placeholder="# My Document"></textarea>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" data-modal="new-file-modal">Cancel</button>
+                <button class="btn btn-primary" id="create-file-btn">Create</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Rename Modal -->
+    <div class="modal-overlay" id="rename-modal" style="display:none;">
+        <div class="modal">
+            <div class="modal-header">
+                <h3>Rename File</h3>
+                <button class="modal-close" data-modal="rename-modal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <label for="rename-old-path">Current path:</label>
+                <input type="text" id="rename-old-path" readonly>
+                <label for="rename-new-path">New path:</label>
+                <input type="text" id="rename-new-path" placeholder="new-name.md">
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" data-modal="rename-modal">Cancel</button>
+                <button class="btn btn-primary" id="rename-confirm-btn">Rename</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Delete Confirmation Modal -->
+    <div class="modal-overlay" id="delete-modal" style="display:none;">
+        <div class="modal">
+            <div class="modal-header">
+                <h3>Delete File</h3>
+                <button class="modal-close" data-modal="delete-modal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p>Are you sure you want to delete <strong id="delete-file-name"></strong>?</p>
+                <p class="text-secondary">This action cannot be undone.</p>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" data-modal="delete-modal">Cancel</button>
+                <button class="btn btn-danger" id="delete-confirm-btn">Delete</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Directory Picker Modal -->
+    <div class="modal-overlay" id="dir-picker-modal" style="display:none;">
+        <div class="modal modal-lg">
+            <div class="modal-header">
+                <h3>Change Directory</h3>
+                <button class="modal-close" data-modal="dir-picker-modal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <label for="dir-path-input">Path:</label>
+                <div class="dir-input-row">
+                    <input type="text" id="dir-path-input" placeholder="/path/to/directory">
+                    <button class="btn btn-primary" id="dir-go-btn">Go</button>
+                </div>
+                <div class="dir-browser" id="dir-browser">
+                    <div class="dir-current" id="dir-current-path"></div>
+                    <ul class="dir-list" id="dir-list"></ul>
+                </div>
+                <div class="dir-info" id="dir-info"></div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" data-modal="dir-picker-modal">Cancel</button>
+                <button class="btn btn-primary" id="dir-apply-btn">Open this directory</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Upload Zone (drag-drop overlay) -->
+    <div class="upload-overlay" id="upload-overlay" style="display:none;">
+        <div class="upload-overlay-content">
+            <div class="upload-icon">&#x1F4E5;</div>
+            <p>Drop .md files here to upload</p>
+        </div>
+    </div>
+
+    <!-- Toast notifications -->
+    <div class="toast-container" id="toast-container"></div>
+
+    <script src="{{ url_for('static', filename='js/navigation.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/file-operations.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/directory-picker.js') }}"></script>
     <script>
         document.getElementById('sidebar-toggle').addEventListener('click', function() {
             document.getElementById('sidebar').classList.toggle('open');
