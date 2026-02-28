@@ -13,6 +13,7 @@
         <div class="sidebar-header">
             <a href="{{ url_for('index') }}" class="logo">MD Preview</a>
             <div class="sidebar-header-buttons">
+                <button class="icon-btn icon-btn-theme" id="theme-toggle-btn" title="Toggle color theme">Theme</button>
                 <button class="icon-btn" id="new-file-btn" title="New file">+</button>
                 <button class="icon-btn" id="dir-picker-btn" title="Change directory">&#x1F4C2;</button>
                 <button class="sidebar-toggle" id="sidebar-toggle" aria-label="Toggle sidebar">
@@ -21,7 +22,7 @@
             </div>
         </div>
         <div class="sidebar-search">
-            <input type="text" id="search-input" placeholder="Search files..." autocomplete="off">
+            <input type="text" id="search-input" placeholder="Search files or press /" autocomplete="off">
         </div>
         <div class="sidebar-content">
             <div class="tree-controls">

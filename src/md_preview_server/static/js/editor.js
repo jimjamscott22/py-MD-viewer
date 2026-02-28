@@ -11,6 +11,8 @@ function initEditor(filepath) {
 
     var toggleBtn = document.getElementById("edit-toggle-btn");
     var viewContainer = document.getElementById("view-container");
+    var docShell = document.getElementById("doc-shell");
+    var readingProgress = document.getElementById("reading-progress");
     var editorContainer = document.getElementById("editor-container");
     var saveBtn = document.getElementById("save-btn");
     var statusEl = document.getElementById("editor-status");
@@ -30,7 +32,14 @@ function initEditor(filepath) {
 
     function enterEditMode() {
         window._editorActive = true;
-        viewContainer.style.display = "none";
+        if (docShell) {
+            docShell.style.display = "none";
+        } else if (viewContainer) {
+            viewContainer.style.display = "none";
+        }
+        if (readingProgress) {
+            readingProgress.style.display = "none";
+        }
         editorContainer.style.display = "";
         toggleBtn.textContent = "View";
         toggleBtn.classList.add("active");
@@ -53,7 +62,14 @@ function initEditor(filepath) {
         }
         window._editorActive = false;
         editorContainer.style.display = "none";
-        viewContainer.style.display = "";
+        if (docShell) {
+            docShell.style.display = "";
+        } else if (viewContainer) {
+            viewContainer.style.display = "";
+        }
+        if (readingProgress) {
+            readingProgress.style.display = "";
+        }
         toggleBtn.textContent = "Edit";
         toggleBtn.classList.remove("active");
         _isDirty = false;

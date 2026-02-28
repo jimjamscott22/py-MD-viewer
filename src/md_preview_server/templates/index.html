@@ -41,20 +41,45 @@
 
 {% block content %}
 <div class="welcome">
-    <h1>Markdown Preview Server</h1>
-    <p>Select a markdown file from the sidebar to preview it, or drag & drop files to upload.</p>
+    <section class="hero-panel">
+        <p class="eyebrow">Markdown workspace</p>
+        <h1>Preview, edit, and manage your notes from one place.</h1>
+        <p>Select a markdown file from the sidebar to preview it, use live edit mode for quick changes, or drag and drop new files into the workspace.</p>
+        <div class="hero-actions">
+            <button class="btn btn-primary" id="hero-new-file-btn" type="button">Create a file</button>
+            <a class="btn btn-secondary" href="#file-library">Browse files</a>
+        </div>
+    </section>
 
     {% if tree %}
-    <div class="file-list-main">
-        <h2>Available Files</h2>
+    <div class="file-list-main surface-panel" id="file-library">
+        <div class="section-heading">
+            <div>
+                <p class="eyebrow">Library</p>
+                <h2>Available files</h2>
+            </div>
+            <p class="section-copy">The sidebar search is faster for large folders. Press <code>/</code> to jump to it.</p>
+        </div>
         {{ render_tree(tree) }}
     </div>
     {% else %}
-    <div class="empty-state">
+    <div class="empty-state surface-panel">
         <h2>No Markdown Files Found</h2>
         <p>No <code>.md</code> files were found in the current directory.</p>
         <p>Create a markdown file or drag & drop one here.</p>
     </div>
     {% endif %}
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    var heroButton = document.getElementById("hero-new-file-btn");
+    var createButton = document.getElementById("new-file-btn");
+    if (heroButton && createButton) {
+        heroButton.addEventListener("click", function () {
+            createButton.click();
+        });
+    }
+</script>
 {% endblock %}
