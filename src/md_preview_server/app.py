@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from flask import Flask, Response, abort, jsonify, render_template, request
+from werkzeug.utils import secure_filename
 
 from .renderer import render_markdown
 from .watcher import start_watcher, stop_watcher
@@ -16,12 +17,22 @@ _subscribers: list[queue.Queue] = []
 _subscribers_lock = threading.Lock()
 _watcher_lock = threading.Lock()
 _current_observer = None
+_file_cache: dict | None = None
+_file_cache_lock = threading.Lock()
 
 EXCLUDED_DIRS = {".git", "node_modules", ".venv", "__pycache__", ".tox", ".mypy_cache"}
 
 
+def invalidate_file_cache() -> None:
+    """Clear the cached file tree/list so the next access re-scans."""
+    global _file_cache
+    with _file_cache_lock:
+        _file_cache = None
+
+
 def notify_clients(changed_path: str, event_type: str = "file_modified") -> None:
     """Push a change event to all SSE subscribers."""
+    invalidate_file_cache()
     message = json.dumps({"type": event_type, "file": changed_path})
     with _subscribers_lock:
         for q in _subscribers:
@@ -32,7 +43,8 @@ def notify_clients(changed_path: str, event_type: str = "file_modified") -> None
 
 
 def notify_tree_changed() -> None:
-    """Notify all clients that the file tree has changed."""
+    """Notify all clients that the file tree has changed and invalidate cache."""
+    invalidate_file_cache()
     message = json.dumps({"type": "tree_changed"})
     with _subscribers_lock:
         for q in _subscribers:
@@ -51,28 +63,26 @@ def validate_path(base_dir: Path, rel_path: str) -> Path:
     return target
 
 
-def build_file_tree(base_dir: Path) -> dict:
-    """Build a nested dict representing the directory tree of .md files."""
+def _scan_files(base_dir: Path) -> dict:
+    """Scan the directory once and build both tree and file list."""
+    global _file_cache
+    with _file_cache_lock:
+        if _file_cache is not None and _file_cache["base_dir"] == base_dir:
+            return _file_cache
+
     tree: dict = {}
+    files: list[dict] = []
     for md_file in sorted(base_dir.rglob("*.md")):
         rel = md_file.relative_to(base_dir)
         parts = rel.parts
         if any(part in EXCLUDED_DIRS for part in parts):
             continue
+        # Build tree
         node = tree
         for part in parts[:-1]:
             node = node.setdefault(part, {})
         node[parts[-1]] = rel.as_posix()
-    return tree
-
-
-def get_file_list(base_dir: Path) -> list[dict]:
-    """Get a flat list of .md files with metadata."""
-    files = []
-    for md_file in sorted(base_dir.rglob("*.md")):
-        rel = md_file.relative_to(base_dir)
-        if any(part in EXCLUDED_DIRS for part in rel.parts):
-            continue
+        # Build file list
         stat = md_file.stat()
         files.append({
             "path": rel.as_posix(),
@@ -80,7 +90,21 @@ def get_file_list(base_dir: Path) -> list[dict]:
             "size": stat.st_size,
             "modified": datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc).isoformat(),
         })
-    return files
+
+    cache = {"base_dir": base_dir, "tree": tree, "files": files}
+    with _file_cache_lock:
+        _file_cache = cache
+    return cache
+
+
+def build_file_tree(base_dir: Path) -> dict:
+    """Build a nested dict representing the directory tree of .md files."""
+    return _scan_files(base_dir)["tree"]
+
+
+def get_file_list(base_dir: Path) -> list[dict]:
+    """Get a flat list of .md files with metadata."""
+    return _scan_files(base_dir)["files"]
 
 
 def create_app(base_dir: Path | None = None) -> Flask:
@@ -91,6 +115,14 @@ def create_app(base_dir: Path | None = None) -> Flask:
         template_folder=str(Path(__file__).parent / "templates"),
     )
     app.config["BASE_DIR"] = base_dir or Path.cwd()
+
+    # Pre-load CSS for export (read once, reuse on every request)
+    static_css = Path(__file__).parent / "static" / "css"
+    app.config["EXPORT_CSS"] = (
+        (static_css / "style.css").read_text(encoding="utf-8")
+        + "\n"
+        + (static_css / "codehilite.css").read_text(encoding="utf-8")
+    )
 
     # --- Page routes ---
 
@@ -410,6 +442,41 @@ def create_app(base_dir: Path | None = None) -> Flask:
         data = request.get_json(silent=True) or {}
         content = data.get("content", "")
         return jsonify({"html": render_markdown(content)})
+
+    # --- Phase 6: Export ---
+
+    @app.route("/api/export/html/<path:filepath>")
+    def api_export_html(filepath: str):
+        base = app.config["BASE_DIR"]
+        target = validate_path(base, filepath)
+        if not target.exists() or not target.is_file():
+            abort(404)
+        try:
+            text = target.read_text(encoding="utf-8")
+        except UnicodeDecodeError:
+            abort(400)
+        html_body = render_markdown(text)
+        export_css = app.config["EXPORT_CSS"]
+
+        standalone = (
+            "<!DOCTYPE html>\n"
+            '<html lang="en">\n<head>\n'
+            '<meta charset="UTF-8">\n'
+            '<meta name="viewport" content="width=device-width, initial-scale=1.0">\n'
+            f"<title>{target.stem}</title>\n"
+            f"<style>{export_css}</style>\n"
+            "<style>body{max-width:800px;margin:2rem auto;padding:0 1rem;}</style>\n"
+            "</head>\n<body>\n"
+            f'<article class="markdown-body">{html_body}</article>\n'
+            "</body>\n</html>"
+        )
+
+        filename = secure_filename(target.stem) + ".html"
+        return Response(
+            standalone,
+            mimetype="text/html",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
 
     return app
 

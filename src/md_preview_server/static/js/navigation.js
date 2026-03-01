@@ -18,6 +18,7 @@
     initKeyboardShortcuts();
     initSidebarAutoClose();
     initDocumentTools();
+    initExportButtons();
 
     function initTheme() {
         var savedTheme = localStorage.getItem(storageKey);
@@ -352,5 +353,35 @@
         var div = document.createElement("div");
         div.textContent = text;
         return div.innerHTML;
+    }
+
+    function initExportButtons() {
+        var exportHtmlBtn = document.getElementById("export-html-btn");
+        var exportPdfBtn = document.getElementById("export-pdf-btn");
+
+        if (exportHtmlBtn) {
+            exportHtmlBtn.addEventListener("click", function () {
+                var path = exportHtmlBtn.getAttribute("data-path");
+                if (!path) return;
+                var a = document.createElement("a");
+                a.href = "/api/export/html/" + encodeURI(path);
+                a.download = "";
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                if (window.showToast) {
+                    window.showToast("Downloading HTML export", "success");
+                }
+            });
+        }
+
+        if (exportPdfBtn) {
+            exportPdfBtn.addEventListener("click", function () {
+                if (window.showToast) {
+                    window.showToast("Opening print dialog", "success");
+                }
+                window.print();
+            });
+        }
     }
 })();

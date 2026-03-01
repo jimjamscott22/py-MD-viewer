@@ -1350,3 +1350,72 @@ pre {
 .preview-pane::-webkit-scrollbar-thumb:hover {
     background: rgba(188, 90, 69, 0.36);
 }
+
+/* --- Print styles --- */
+
+@media print {
+    .sidebar,
+    .sidebar-toggle,
+    .breadcrumb,
+    .breadcrumb-actions,
+    .reading-progress,
+    .doc-sidebar-panel,
+    .editor-container,
+    .modal-overlay,
+    .upload-overlay,
+    .toast-container {
+        display: none !important;
+    }
+
+    .content {
+        margin-left: 0 !important;
+        padding: 0 !important;
+    }
+
+    .doc-shell {
+        display: block !important;
+    }
+
+    .doc-main {
+        max-width: 100% !important;
+    }
+
+    .markdown-body {
+        box-shadow: none !important;
+        border: none !important;
+        padding: 0 !important;
+        font-size: 11pt;
+        line-height: 1.5;
+    }
+
+    .doc-overview {
+        box-shadow: none !important;
+        border: none !important;
+        page-break-after: avoid;
+    }
+
+    h1, h2, h3, h4, h5, h6 {
+        page-break-after: avoid;
+    }
+
+    pre, code, table {
+        page-break-inside: avoid;
+    }
+
+    :root {
+        --color-bg: #fff !important;
+        --color-text: #000 !important;
+        --color-surface: #fff !important;
+    }
+
+    a {
+        color: #000 !important;
+        text-decoration: underline !important;
+    }
+
+    .markdown-body a[href^="http"]::after {
+        content: " (" attr(href) ")";
+        font-size: 0.85em;
+        color: #555;
+    }
+}
