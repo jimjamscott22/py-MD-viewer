@@ -2,6 +2,66 @@
  * File operations: upload (drag-drop), create, rename, delete.
  */
 (function () {
+    // --- Sidebar tree rendering ---
+    function escapeHtmlStr(text) {
+        var div = document.createElement("div");
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    function renderTreeHTML(tree, currentPath) {
+        var keys = Object.keys(tree).sort();
+        var html = '<ul class="file-tree">';
+        keys.forEach(function (name) {
+            var node = tree[name];
+            if (typeof node === "object" && node !== null) {
+                html += '<li class="directory">';
+                html += '<span class="folder-toggle" onclick="this.parentElement.classList.toggle(\'collapsed\')">';
+                html += '<span class="icon folder-icon"></span>';
+                html += '<span class="name">' + escapeHtmlStr(name) + '</span>';
+                html += '</span>';
+                html += renderTreeHTML(node, currentPath);
+                html += '</li>';
+            } else {
+                var isActive = node === currentPath ? " active" : "";
+                html += '<li class="file' + isActive + '" data-path="' + escapeHtmlStr(node) + '">';
+                html += '<span class="icon file-icon"></span>';
+                html += '<a href="/view/' + encodeURI(node) + '">' + escapeHtmlStr(name) + '</a>';
+                html += '<span class="file-actions">';
+                html += '<button class="file-action-btn" data-action="rename" data-path="' + escapeHtmlStr(node) + '" title="Rename">&#x270F;</button>';
+                html += '<button class="file-action-btn" data-action="delete" data-path="' + escapeHtmlStr(node) + '" title="Delete">&#x2716;</button>';
+                html += '</span>';
+                html += '</li>';
+            }
+        });
+        html += '</ul>';
+        return html;
+    }
+
+    function refreshSidebar() {
+        fetch("/api/files")
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                var sidebarTree = document.getElementById("sidebar-tree");
+                if (!sidebarTree) return;
+                // Detect current filepath from the active file or URL
+                var currentPath = "";
+                var match = window.location.pathname.match(/^\/view\/(.+)/);
+                if (match) currentPath = decodeURI(match[1]);
+                var html = '<div class="sidebar-section"><h3>Files</h3>';
+                if (data.tree && Object.keys(data.tree).length > 0) {
+                    html += renderTreeHTML(data.tree, currentPath);
+                } else {
+                    html += '<p class="empty-message">No markdown files found.</p>';
+                }
+                html += '</div>';
+                sidebarTree.innerHTML = html;
+            });
+    }
+
+    // Expose globally for editor.js
+    window.refreshSidebar = refreshSidebar;
+
     // --- Toast notifications ---
     window.showToast = function (message, type) {
         type = type || "info";
@@ -218,7 +278,7 @@
             .then(function (data) {
                 if (data.uploaded && data.uploaded.length > 0) {
                     showToast("Uploaded " + data.uploaded.length + " file(s)", "success");
-                    setTimeout(function () { location.reload(); }, 500);
+                    refreshSidebar();
                 }
                 if (data.errors && data.errors.length > 0) {
                     data.errors.forEach(function (err) {
@@ -231,17 +291,31 @@
             });
     });
 
-    // --- SSE: listen for tree changes to refresh sidebar ---
-    var sseForTree = new EventSource("/events");
-    sseForTree.onmessage = function (event) {
-        var data = JSON.parse(event.data);
-        if (data.type === "tree_changed") {
-            // Reload the whole page to refresh sidebar tree
-            location.reload();
-        }
-    };
-    sseForTree.onerror = function () {
-        sseForTree.close();
-        // Don't reconnect — the view-level live-reload handles that
-    };
+    // --- Shared SSE connection (used by live-reload.js too) ---
+    function connectSSE() {
+        var evtSource = new EventSource("/events");
+        window._sharedSSE = evtSource;
+
+        evtSource.onmessage = function (event) {
+            var data = JSON.parse(event.data);
+
+            if (data.type === "tree_changed") {
+                refreshSidebar();
+                return;
+            }
+
+            // Delegate to live-reload handler if registered
+            if (window._onSSEMessage) {
+                window._onSSEMessage(data);
+            }
+        };
+
+        evtSource.onerror = function () {
+            evtSource.close();
+            window._sharedSSE = null;
+            setTimeout(connectSSE, 3000);
+        };
+    }
+
+    connectSSE();
 })();

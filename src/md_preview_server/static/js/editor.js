@@ -73,8 +73,21 @@ function initEditor(filepath) {
         toggleBtn.textContent = "Edit";
         toggleBtn.classList.remove("active");
         _isDirty = false;
-        // Reload to get fresh rendered content
-        location.reload();
+
+        // Refresh rendered content without full reload
+        fetch("/api/preview", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ content: _cmView ? _cmView.state.doc.toString() : "" }),
+        })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                if (viewContainer) viewContainer.innerHTML = data.html;
+            })
+            .catch(function () {
+                // Fallback to full reload if fetch fails
+                location.reload();
+            });
     }
 
     // Save
@@ -132,22 +145,30 @@ function initEditor(filepath) {
             });
     }
 
-    // Live preview debounce
+    // Live preview debounce with request cancellation
     var previewTimer = null;
+    var previewAbort = null;
     function requestPreview() {
         clearTimeout(previewTimer);
         previewTimer = setTimeout(function () {
             if (!_cmView) return;
+            // Cancel any pending preview request
+            if (previewAbort) previewAbort.abort();
+            previewAbort = new AbortController();
             var content = _cmView.state.doc.toString();
             fetch("/api/preview", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ content: content }),
+                signal: previewAbort.signal,
             })
                 .then(function (r) { return r.json(); })
                 .then(function (data) {
                     var preview = document.getElementById("live-preview");
                     if (preview) preview.innerHTML = data.html;
+                })
+                .catch(function (err) {
+                    if (err.name !== "AbortError") throw err;
                 });
         }, 500);
     }

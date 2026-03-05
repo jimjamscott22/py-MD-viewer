@@ -10,7 +10,7 @@ from pathlib import Path
 from flask import Flask, Response, abort, jsonify, render_template, request
 from werkzeug.utils import secure_filename
 
-from .renderer import render_markdown
+from .renderer import render_markdown, render_markdown_cached
 from .watcher import start_watcher, stop_watcher
 
 _subscribers: list[queue.Queue] = []
@@ -124,6 +124,13 @@ def create_app(base_dir: Path | None = None) -> Flask:
         + (static_css / "codehilite.css").read_text(encoding="utf-8")
     )
 
+    # --- Static asset cache headers ---
+    @app.after_request
+    def add_cache_headers(response):
+        if request.path.startswith("/static/"):
+            response.headers["Cache-Control"] = "public, max-age=3600, must-revalidate"
+        return response
+
     # --- Page routes ---
 
     @app.route("/")
@@ -138,10 +145,9 @@ def create_app(base_dir: Path | None = None) -> Flask:
         if not target.exists() or not target.is_file():
             abort(404)
         try:
-            text = target.read_text(encoding="utf-8")
+            content = render_markdown_cached(target)
         except UnicodeDecodeError:
             abort(400)
-        content = render_markdown(text)
         tree = build_file_tree(base)
         return render_template(
             "view.html",
@@ -452,10 +458,9 @@ def create_app(base_dir: Path | None = None) -> Flask:
         if not target.exists() or not target.is_file():
             abort(404)
         try:
-            text = target.read_text(encoding="utf-8")
+            html_body = render_markdown_cached(target)
         except UnicodeDecodeError:
             abort(400)
-        html_body = render_markdown(text)
         export_css = app.config["EXPORT_CSS"]
 
         standalone = (

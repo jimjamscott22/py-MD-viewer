@@ -10,7 +10,9 @@
       "Bash(uv run pytest:*)",
       "Bash(uv sync:*)",
       "Bash(uv pip install:*)",
-      "WebFetch(domain:cdn.jsdelivr.net)"
+      "WebFetch(domain:cdn.jsdelivr.net)",
+      "Bash(python -m pytest tests/ -v)",
+      "Bash(.venv/bin/python -m pytest tests/ -v)"
     ]
   }
 }
