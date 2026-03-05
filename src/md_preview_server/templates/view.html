@@ -3,8 +3,7 @@
 {% block title %}{{ filename }} - MD Preview{% endblock %}
 
 {% block extra_head %}
-<!-- CodeMirror 6 via CDN (loaded only on view pages) -->
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@codemirror/view@6/dist/index.css">
+<!-- CodeMirror 6 styles (CM6 injects its own CSS via JS, these are layout overrides) -->
 <style>
     .cm-editor { height: 100%; }
     .cm-editor .cm-scroller { overflow: auto; }

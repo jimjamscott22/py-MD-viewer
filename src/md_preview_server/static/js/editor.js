@@ -161,9 +161,8 @@ function initEditor(filepath) {
         var script = document.createElement("script");
         script.type = "module";
         script.textContent = "\n\
-import {EditorView, basicSetup} from 'https://cdn.jsdelivr.net/npm/codemirror@6.65.7/+esm';\n\
-import {markdown} from 'https://cdn.jsdelivr.net/npm/@codemirror/lang-markdown@6.3.1/+esm';\n\
-import {EditorState} from 'https://cdn.jsdelivr.net/npm/@codemirror/state@6.5.2/+esm';\n\
+import {EditorView, basicSetup} from 'https://cdn.jsdelivr.net/npm/codemirror@6.0.1/+esm';\n\
+import {markdown} from 'https://cdn.jsdelivr.net/npm/@codemirror/lang-markdown@6/+esm';\n\
 \n\
 var updateListener = EditorView.updateListener.of(function(update) {\n\
     if (update.docChanged) {\n\
@@ -172,7 +171,7 @@ var updateListener = EditorView.updateListener.of(function(update) {\n\
     }\n\
 });\n\
 \n\
-var state = EditorState.create({\n\
+var view = new EditorView({\n\
     doc: " + JSON.stringify(content) + ",\n\
     extensions: [\n\
         basicSetup,\n\
@@ -185,9 +184,8 @@ var state = EditorState.create({\n\
             '.cm-content': { fontFamily: 'SFMono-Regular, Consolas, Liberation Mono, Menlo, monospace', fontSize: '14px' },\n\
         }),\n\
     ],\n\
+    parent: document.getElementById('editor-pane'),\n\
 });\n\
-\n\
-var view = new EditorView({ state: state, parent: document.getElementById('editor-pane') });\n\
 window._cmView = view;\n\
 // Trigger initial preview\n\
 window._editorPreview();\n\
