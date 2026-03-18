@@ -9,6 +9,65 @@
         return div.innerHTML;
     }
 
+    // --- Quick Access: Recent Files & Favorites ---
+
+    function getRecentFiles() {
+        try { return JSON.parse(localStorage.getItem('mdv-recent-files') || '[]'); } catch(e) { return []; }
+    }
+
+    function addToRecentFiles(path, name) {
+        var recent = getRecentFiles().filter(function(f) { return f.path !== path; });
+        recent.unshift({ path: path, name: name, timestamp: Date.now() });
+        if (recent.length > 20) recent = recent.slice(0, 20);
+        try { localStorage.setItem('mdv-recent-files', JSON.stringify(recent)); } catch(e) {}
+    }
+
+    function getFavorites() {
+        try { return JSON.parse(localStorage.getItem('mdv-favorites') || '[]'); } catch(e) { return []; }
+    }
+
+    function isFavorite(path) {
+        return getFavorites().some(function(f) { return f.path === path; });
+    }
+
+    function toggleFavorite(path, name) {
+        var favs = getFavorites();
+        var idx = -1;
+        for (var i = 0; i < favs.length; i++) { if (favs[i].path === path) { idx = i; break; } }
+        if (idx >= 0) { favs.splice(idx, 1); } else { favs.unshift({ path: path, name: name }); }
+        try { localStorage.setItem('mdv-favorites', JSON.stringify(favs)); } catch(e) {}
+        renderQuickAccessSections();
+    }
+
+    function renderQuickSectionHTML(title, items, actionAttr, actionIcon, actionTitle) {
+        var key = 'mdv-qa-' + title + '-collapsed';
+        var collapsed = localStorage.getItem(key) === '1';
+        var html = '<div class="sidebar-section sidebar-section-quick' + (collapsed ? ' collapsed' : '') + '">';
+        html += '<h3 class="sidebar-section-heading" data-collapse-key="' + key + '">' + escapeHtmlStr(title) + '</h3>';
+        html += '<ul class="quick-access-list">';
+        items.forEach(function(f) {
+            html += '<li class="file">';
+            html += '<span class="icon file-icon"></span>';
+            html += '<a href="/view/' + encodeURI(f.path) + '" title="' + escapeHtmlStr(f.path) + '">' + escapeHtmlStr(f.name) + '</a>';
+            html += '<span class="file-actions">';
+            html += '<button class="file-action-btn" data-action="' + actionAttr + '" data-path="' + escapeHtmlStr(f.path) + '" title="' + actionTitle + '">' + actionIcon + '</button>';
+            html += '</span></li>';
+        });
+        html += '</ul></div>';
+        return html;
+    }
+
+    function renderQuickAccessSections() {
+        var container = document.getElementById('sidebar-quick-access');
+        if (!container) return;
+        var html = '';
+        var favs = getFavorites();
+        if (favs.length > 0) html += renderQuickSectionHTML('Favorites', favs, 'remove-fav', '&#x2605;', 'Unpin');
+        var recent = getRecentFiles();
+        if (recent.length > 0) html += renderQuickSectionHTML('Recent', recent, 'remove-recent', '&times;', 'Remove');
+        container.innerHTML = html;
+    }
+
     function renderTreeHTML(tree, currentPath) {
         var keys = Object.keys(tree).sort();
         var html = '<ul class="file-tree">';
@@ -27,7 +86,9 @@
                 html += '<li class="file' + isActive + '" data-path="' + escapeHtmlStr(node) + '">';
                 html += '<span class="icon file-icon"></span>';
                 html += '<a href="/view/' + encodeURI(node) + '">' + escapeHtmlStr(name) + '</a>';
+                var pinned = isFavorite(node);
                 html += '<span class="file-actions">';
+                html += '<button class="file-action-btn pin-btn" data-action="pin" data-path="' + escapeHtmlStr(node) + '" data-name="' + escapeHtmlStr(name) + '" title="' + (pinned ? 'Unpin' : 'Pin to favorites') + '">' + (pinned ? '&#x2605;' : '&#x2606;') + '</button>';
                 html += '<button class="file-action-btn" data-action="rename" data-path="' + escapeHtmlStr(node) + '" title="Rename">&#x270F;</button>';
                 html += '<button class="file-action-btn" data-action="delete" data-path="' + escapeHtmlStr(node) + '" title="Delete">&#x2716;</button>';
                 html += '</span>';
@@ -56,6 +117,7 @@
                 }
                 html += '</div>';
                 sidebarTree.innerHTML = html;
+                renderQuickAccessSections();
             });
     }
 
@@ -228,6 +290,51 @@
         });
     }
 
+    // --- Quick Access event delegation ---
+    document.addEventListener("click", function(e) {
+        // Section heading collapse toggle
+        var heading = e.target.closest(".sidebar-section-heading");
+        if (heading) {
+            var section = heading.parentElement;
+            var key = heading.getAttribute("data-collapse-key");
+            section.classList.toggle("collapsed");
+            if (key) localStorage.setItem(key, section.classList.contains("collapsed") ? "1" : "0");
+            return;
+        }
+        // Pin / unpin from file tree
+        var pinBtn = e.target.closest("[data-action='pin']");
+        if (pinBtn) {
+            e.preventDefault();
+            e.stopPropagation();
+            toggleFavorite(pinBtn.getAttribute("data-path"), pinBtn.getAttribute("data-name"));
+            // Update star icon inline without full refresh
+            var pinned = isFavorite(pinBtn.getAttribute("data-path"));
+            pinBtn.innerHTML = pinned ? '&#x2605;' : '&#x2606;';
+            pinBtn.title = pinned ? 'Unpin' : 'Pin to favorites';
+            return;
+        }
+        // Remove from favorites
+        var removeFav = e.target.closest("[data-action='remove-fav']");
+        if (removeFav) {
+            e.preventDefault();
+            e.stopPropagation();
+            var favs = getFavorites().filter(function(f) { return f.path !== removeFav.getAttribute("data-path"); });
+            try { localStorage.setItem('mdv-favorites', JSON.stringify(favs)); } catch(e2) {}
+            renderQuickAccessSections();
+            return;
+        }
+        // Remove from recent
+        var removeRecent = e.target.closest("[data-action='remove-recent']");
+        if (removeRecent) {
+            e.preventDefault();
+            e.stopPropagation();
+            var recent = getRecentFiles().filter(function(f) { return f.path !== removeRecent.getAttribute("data-path"); });
+            try { localStorage.setItem('mdv-recent-files', JSON.stringify(recent)); } catch(e2) {}
+            renderQuickAccessSections();
+            return;
+        }
+    });
+
     // --- Drag-and-drop upload ---
     var dragCounter = 0;
     var overlay = document.getElementById("upload-overlay");
@@ -316,6 +423,17 @@
             setTimeout(connectSSE, 3000);
         };
     }
+
+    // Auto-track current view page in recent files
+    (function() {
+        var match = window.location.pathname.match(/^\/view\/(.+)/);
+        if (match) {
+            var path = decodeURI(match[1]);
+            var name = path.split('/').pop();
+            addToRecentFiles(path, name);
+        }
+        renderQuickAccessSections();
+    })();
 
     connectSSE();
 })();

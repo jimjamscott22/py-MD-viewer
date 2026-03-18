@@ -12,7 +12,9 @@
       "Bash(uv pip install:*)",
       "WebFetch(domain:cdn.jsdelivr.net)",
       "Bash(python -m pytest tests/ -v)",
-      "Bash(.venv/bin/python -m pytest tests/ -v)"
+      "Bash(.venv/bin/python -m pytest tests/ -v)",
+      "Bash(python -c \"from src.md_preview_server.renderer import render_markdown_with_meta, extract_frontmatter; html, meta = render_markdown_with_meta\\(''---\\\\ntitle: Test\\\\nauthor: Jim\\\\n---\\\\n\\\\n# Hello\\\\n\\\\nWorld''\\); print\\(''meta:'', meta\\); print\\(''html ok:'', ''<h1>'' in html\\)\")",
+      "Bash(uv run:*)"
     ]
   }
 }

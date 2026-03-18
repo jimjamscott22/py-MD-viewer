@@ -57,7 +57,7 @@
             <span class="current">{{ part }}</span>
         {% else %}
             {% set ns.path = ns.path ~ part ~ '/' %}
-            <span>{{ part }}</span>
+            <a href="{{ url_for('index') }}">{{ part }}</a>
         {% endif %}
     {% endfor %}
     <div class="breadcrumb-actions">
@@ -83,6 +83,43 @@
             </div>
         </header>
 
+        {% if metadata %}
+        <div class="frontmatter-card surface-panel" id="frontmatter-card">
+            <dl class="frontmatter-meta">
+                {% if metadata.author %}
+                <div class="frontmatter-item">
+                    <dt>Author</dt>
+                    <dd>{{ metadata.author }}</dd>
+                </div>
+                {% endif %}
+                {% if metadata.date %}
+                <div class="frontmatter-item">
+                    <dt>Date</dt>
+                    <dd>{{ metadata.date }}</dd>
+                </div>
+                {% endif %}
+                {% if metadata.tags %}
+                <div class="frontmatter-item">
+                    <dt>Tags</dt>
+                    <dd>
+                        {% for tag in metadata.tags %}
+                        <span class="tag-pill">{{ tag }}</span>
+                        {% endfor %}
+                    </dd>
+                </div>
+                {% endif %}
+                {% for key, value in metadata.items() %}
+                {% if key not in ['title', 'author', 'date', 'tags'] %}
+                <div class="frontmatter-item">
+                    <dt>{{ key }}</dt>
+                    <dd>{{ value }}</dd>
+                </div>
+                {% endif %}
+                {% endfor %}
+            </dl>
+        </div>
+        {% endif %}
+
         <article class="markdown-body surface-panel" id="view-container">
             {{ content|safe }}
         </article>
@@ -103,9 +140,53 @@
             <span class="editor-status" id="editor-status">Editing</span>
         </div>
         <div class="editor-toolbar-right">
+            <label class="editor-keybinding-label" for="keybinding-select">Keys:</label>
+            <select class="editor-select" id="keybinding-select" title="Keybinding mode">
+                <option value="default">Default</option>
+                <option value="vim">Vim</option>
+                <option value="emacs">Emacs</option>
+            </select>
             <button class="btn btn-sm btn-primary" id="save-btn" title="Ctrl+S">Save</button>
         </div>
     </div>
+    <div class="formatting-toolbar" id="formatting-toolbar">
+        <div class="fmt-group">
+            <button class="fmt-btn" data-fmt="bold"     title="Bold (Ctrl+B)"><strong>B</strong></button>
+            <button class="fmt-btn" data-fmt="italic"   title="Italic (Ctrl+I)"><em>I</em></button>
+            <button class="fmt-btn" data-fmt="strike"   title="Strikethrough"><s>S</s></button>
+        </div>
+        <div class="fmt-group">
+            <button class="fmt-btn" data-fmt="h1"       title="Heading 1">H1</button>
+            <button class="fmt-btn" data-fmt="h2"       title="Heading 2">H2</button>
+            <button class="fmt-btn" data-fmt="h3"       title="Heading 3">H3</button>
+        </div>
+        <div class="fmt-group">
+            <button class="fmt-btn" data-fmt="link"     title="Link (Ctrl+K)">&#x1F517;</button>
+            <button class="fmt-btn" data-fmt="image"    title="Image">&#x1F5BC;</button>
+            <button class="fmt-btn" data-fmt="code"     title="Inline code">&#x60;</button>
+            <button class="fmt-btn" data-fmt="codeblock" title="Code block">&#x3C;/&#x3E;</button>
+        </div>
+        <div class="fmt-group">
+            <button class="fmt-btn" data-fmt="ul"       title="Unordered list">&#x2022; List</button>
+            <button class="fmt-btn" data-fmt="ol"       title="Ordered list">1. List</button>
+            <button class="fmt-btn" data-fmt="blockquote" title="Blockquote">&#x275D;</button>
+            <button class="fmt-btn" data-fmt="hr"       title="Horizontal rule">&#x2015;</button>
+        </div>
+        <div class="fmt-group fmt-group-right">
+            <button class="fmt-btn" id="history-panel-btn" onclick="window._showHistoryPanel && window._showHistoryPanel()" title="Version history">&#x1F4BE;</button>
+            <button class="fmt-btn fmt-toggle-btn" id="fmt-toggle-btn" title="Toggle toolbar">&#x2715;</button>
+        </div>
+    </div>
+
+    <!-- Version history panel -->
+    <div class="history-panel" id="history-panel">
+        <div class="history-panel-header">
+            <span>Version History</span>
+            <button class="modal-close" onclick="document.getElementById('history-panel').classList.remove('history-panel-open')">&times;</button>
+        </div>
+        <div id="history-list" class="history-list"></div>
+    </div>
+    <div class="tab-bar" id="tab-bar" style="display:none;"></div>
     <div class="split-pane">
         <div class="editor-pane" id="editor-pane"></div>
         <div class="split-divider" id="split-divider"></div>
@@ -122,5 +203,65 @@
 <script>
     initLiveReload("{{ filepath }}");
     initEditor("{{ filepath }}");
+</script>
+<script>
+// Diagram/math rendering — called on page load and after live preview updates
+window.renderDiagrams = function(container) {
+    if (!container) return;
+    if (window._mermaid && container.querySelector && container.querySelector('.mermaid')) {
+        var nodes = Array.from(container.querySelectorAll('.mermaid')).filter(function(el) {
+            return !el.getAttribute('data-processed');
+        });
+        if (nodes.length) window._mermaid.run({ nodes: nodes });
+    }
+    if (window._katexLoaded && window.renderMathInElement && container.querySelector && container.querySelector('.arithmatex')) {
+        window.renderMathInElement(container, {
+            delimiters: [
+                {left: '\\[', right: '\\]', display: true},
+                {left: '\\(', right: '\\)', display: false}
+            ],
+            throwOnError: false
+        });
+    }
+};
+
+// Mermaid — lazy load only if page has diagrams
+if (document.querySelector('#view-container .mermaid')) {
+    import('https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs')
+        .then(function(mod) {
+            var mermaid = mod.default;
+            var theme = localStorage.getItem('md-preview-theme') === 'night' ? 'dark' : 'default';
+            mermaid.initialize({ startOnLoad: false, theme: theme });
+            window._mermaid = mermaid;
+            mermaid.run({ querySelector: '#view-container .mermaid' });
+        });
+}
+
+// KaTeX — lazy load only if page has math
+if (document.querySelector('#view-container .arithmatex')) {
+    var _katexLink = document.createElement('link');
+    _katexLink.rel = 'stylesheet';
+    _katexLink.href = 'https://cdn.jsdelivr.net/npm/katex@0.16/dist/katex.min.css';
+    document.head.appendChild(_katexLink);
+
+    var _katexScript = document.createElement('script');
+    _katexScript.src = 'https://cdn.jsdelivr.net/npm/katex@0.16/dist/katex.min.js';
+    _katexScript.onload = function() {
+        var _arScript = document.createElement('script');
+        _arScript.src = 'https://cdn.jsdelivr.net/npm/katex@0.16/dist/contrib/auto-render.min.js';
+        _arScript.onload = function() {
+            window._katexLoaded = true;
+            window.renderMathInElement(document.getElementById('view-container'), {
+                delimiters: [
+                    {left: '\\[', right: '\\]', display: true},
+                    {left: '\\(', right: '\\)', display: false}
+                ],
+                throwOnError: false
+            });
+        };
+        document.head.appendChild(_arScript);
+    };
+    document.head.appendChild(_katexScript);
+}
 </script>
 {% endblock %}

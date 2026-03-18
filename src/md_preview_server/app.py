@@ -10,7 +10,12 @@ from pathlib import Path
 from flask import Flask, Response, abort, jsonify, render_template, request
 from werkzeug.utils import secure_filename
 
-from .renderer import render_markdown, render_markdown_cached
+from .renderer import (
+    render_markdown,
+    render_markdown_cached,
+    render_markdown_cached_with_meta,
+    render_markdown_with_meta,
+)
 from .watcher import start_watcher, stop_watcher
 
 _subscribers: list[queue.Queue] = []
@@ -145,16 +150,18 @@ def create_app(base_dir: Path | None = None) -> Flask:
         if not target.exists() or not target.is_file():
             abort(404)
         try:
-            content = render_markdown_cached(target)
+            content, metadata = render_markdown_cached_with_meta(target)
         except UnicodeDecodeError:
             abort(400)
         tree = build_file_tree(base)
+        title = metadata.get("title") or target.name
         return render_template(
             "view.html",
             content=content,
-            filename=target.name,
+            filename=title,
             filepath=filepath,
             tree=tree,
+            metadata=metadata,
         )
 
     @app.route("/events")
@@ -447,7 +454,8 @@ def create_app(base_dir: Path | None = None) -> Flask:
     def api_preview():
         data = request.get_json(silent=True) or {}
         content = data.get("content", "")
-        return jsonify({"html": render_markdown(content)})
+        html, metadata = render_markdown_with_meta(content)
+        return jsonify({"html": html, "metadata": metadata})
 
     # --- Phase 6: Export ---
 
