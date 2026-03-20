@@ -6,6 +6,7 @@ import queue
 import threading
 from datetime import datetime, timezone
 from pathlib import Path
+import openai
 
 from flask import Flask, Response, abort, jsonify, render_template, request
 from werkzeug.utils import secure_filename
@@ -456,6 +457,34 @@ def create_app(base_dir: Path | None = None) -> Flask:
         content = data.get("content", "")
         html, metadata = render_markdown_with_meta(content)
         return jsonify({"html": html, "metadata": metadata})
+
+    @app.route("/api/ai/ask", methods=["POST"])
+    def api_ai_ask():
+        data = request.get_json(silent=True) or {}
+        prompt = data.get("prompt", "").strip()
+        doc_content = data.get("document_content", "")
+
+        if not prompt:
+            return jsonify({"success": False, "error": "Prompt is required"}), 400
+
+        api_key = os.environ.get("OPENAI_API_KEY", "local-key")
+        base_url = os.environ.get("LLM_BASE_URL", "http://localhost:1234/v1")
+        model = os.environ.get("LLM_MODEL", "local-model")
+
+        try:
+            client = openai.OpenAI(api_key=api_key, base_url=base_url)
+            response = client.chat.completions.create(
+                model=model,
+                messages=[
+                    {"role": "system", "content": "You are a helpful Markdown document assistant. The user will provide the current content of their document for context. Provide helpful answers, summaries, grammar fixes, or markdown formatting suggestions based on their prompt."},
+                    {"role": "user", "content": f"Here is the current document content:\\n\\n{doc_content}\\n\\n---\\n\\nMy prompt: {prompt}"}
+                ],
+                max_tokens=600,
+            )
+            reply = response.choices[0].message.content
+            return jsonify({"success": True, "response": reply})
+        except Exception as e:
+            return jsonify({"success": False, "error": str(e)}), 500
 
     # --- Phase 6: Export ---
 

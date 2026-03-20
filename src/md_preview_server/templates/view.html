@@ -130,6 +130,21 @@
         <div class="doc-outline" id="doc-outline">
             <p class="empty-message">No headings found yet.</p>
         </div>
+        
+        <hr style="margin: 20px 0; border: none; border-top: 1px solid var(--color-border);">
+        
+        <p class="eyebrow">AI Assistant</p>
+        <div class="ai-assistant-container">
+            <div id="ai-assistant-history" class="ai-history">
+                <div class="ai-msg ai-msg-assistant">
+                    <div class="ai-msg-bubble">Hi! I see you are viewing <strong>{{ filename }}</strong>. How can I help you?</div>
+                </div>
+            </div>
+            <form id="ai-assistant-form" class="ai-input-form">
+                <input type="text" id="ai-assistant-input" placeholder="Ask about this document..." autocomplete="off">
+                <button type="submit" id="ai-assistant-submit" class="btn btn-sm btn-primary" title="Send (Enter)">&#10148;</button>
+            </form>
+        </div>
     </aside>
 </section>
 
@@ -200,6 +215,7 @@
 {% block scripts %}
 <script src="{{ url_for('static', filename='js/live-reload.js') }}"></script>
 <script src="{{ url_for('static', filename='js/editor.js') }}"></script>
+<script src="{{ url_for('static', filename='js/ai-assistant.js') }}"></script>
 <script>
     initLiveReload("{{ filepath }}");
     initEditor("{{ filepath }}");
