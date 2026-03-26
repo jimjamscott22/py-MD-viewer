@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}MD Preview{% endblock %}</title>
+    <title>{% block title %}md-view{% endblock %}</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/codehilite.css') }}">
     {% block extra_head %}{% endblock %}
@@ -11,11 +11,11 @@
 <body>
     <nav class="sidebar" id="sidebar">
         <div class="sidebar-header">
-            <a href="{{ url_for('index') }}" class="logo">MD Preview</a>
+            <a href="{{ url_for('index') }}" class="logo">md-view</a>
             <div class="sidebar-header-buttons">
-                <button class="icon-btn icon-btn-theme" id="theme-toggle-btn" title="Toggle color theme">Theme</button>
-                <button class="icon-btn" id="new-file-btn" title="New file">+</button>
-                <button class="icon-btn" id="dir-picker-btn" title="Change directory">&#x1F4C2;</button>
+                <button class="icon-btn icon-btn-theme" id="theme-toggle-btn" title="Toggle color theme">theme</button>
+                <button class="icon-btn" id="new-file-btn" title="New file">new</button>
+                <button class="icon-btn" id="dir-picker-btn" title="Change directory">cd</button>
                 <button class="sidebar-toggle" id="sidebar-toggle" aria-label="Toggle sidebar">
                     <span></span><span></span><span></span>
                 </button>
@@ -127,8 +127,8 @@
     <!-- Upload Zone (drag-drop overlay) -->
     <div class="upload-overlay" id="upload-overlay" style="display:none;">
         <div class="upload-overlay-content">
-            <div class="upload-icon">&#x1F4E5;</div>
-            <p>Drop .md files here to upload</p>
+            <div class="upload-icon">[ TRANSFER ]</div>
+            <p>Drop .md files to upload</p>
         </div>
     </div>
 
