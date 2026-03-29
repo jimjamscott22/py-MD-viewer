@@ -9,7 +9,8 @@
     var searchResults = document.getElementById("search-results");
     var expandBtn = document.getElementById("expand-all-btn");
     var collapseBtn = document.getElementById("collapse-all-btn");
-    var themeToggleBtn = document.getElementById("theme-toggle-btn");
+    var themeMenuBtn = document.getElementById("theme-menu-btn");
+    var themeMenu = document.getElementById("theme-menu");
     var debounceTimer = null;
 
     initTheme();
@@ -22,34 +23,57 @@
 
     function initTheme() {
         var savedTheme = localStorage.getItem(storageKey);
-        var theme = savedTheme || "day";
+        var theme = savedTheme || "terminal";
 
         applyTheme(theme);
 
-        if (!themeToggleBtn) {
+        if (!themeMenuBtn || !themeMenu) {
             return;
         }
 
-        themeToggleBtn.addEventListener("click", function () {
-            var nextTheme = root.getAttribute("data-theme") === "night" ? "day" : "night";
-            localStorage.setItem(storageKey, nextTheme);
-            applyTheme(nextTheme);
+        themeMenuBtn.addEventListener("click", function (e) {
+            e.stopPropagation();
+            var isHidden = themeMenu.style.display === "none" || themeMenu.style.display === "";
+            themeMenu.style.display = isHidden ? "block" : "none";
+        });
+
+        document.addEventListener("click", function (e) {
+            if (!themeMenu.contains(e.target) && e.target !== themeMenuBtn) {
+                themeMenu.style.display = "none";
+            }
+        });
+
+        var menuItems = themeMenu.querySelectorAll(".theme-menu-item");
+        menuItems.forEach(function (item) {
+            item.addEventListener("click", function () {
+                var selectedTheme = this.getAttribute("data-theme-value");
+                localStorage.setItem(storageKey, selectedTheme);
+                applyTheme(selectedTheme);
+                themeMenu.style.display = "none";
+            });
         });
     }
 
     function applyTheme(theme) {
-        var label = "☀️";
-        if (theme === "night") {
-            root.setAttribute("data-theme", "night");
-            label = "🌙";
-        } else {
+        if (!theme || theme === "terminal") {
             root.removeAttribute("data-theme");
-            label = "☀️";
+        } else {
+            root.setAttribute("data-theme", theme);
         }
 
-        if (themeToggleBtn) {
-            themeToggleBtn.innerHTML = label;
-            themeToggleBtn.setAttribute("title", theme === "night" ? "Switch to Day Mode" : "Switch to Night Mode");
+        if (themeMenuBtn) {
+            themeMenuBtn.setAttribute("title", "Current theme: " + theme);
+        }
+
+        if (themeMenu && typeof themeMenu.querySelectorAll === 'function') {
+            var menuItems = themeMenu.querySelectorAll(".theme-menu-item");
+            menuItems.forEach(function (item) {
+                if (item.getAttribute("data-theme-value") === theme) {
+                    item.classList.add("active");
+                } else {
+                    item.classList.remove("active");
+                }
+            });
         }
     }
 
