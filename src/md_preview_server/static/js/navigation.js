@@ -38,17 +38,18 @@
     }
 
     function applyTheme(theme) {
-        var label = "Theme";
+        var label = "☀️";
         if (theme === "night") {
             root.setAttribute("data-theme", "night");
-            label = "Night";
+            label = "🌙";
         } else {
             root.removeAttribute("data-theme");
-            label = "Day";
+            label = "☀️";
         }
 
         if (themeToggleBtn) {
-            themeToggleBtn.textContent = label;
+            themeToggleBtn.innerHTML = label;
+            themeToggleBtn.setAttribute("title", theme === "night" ? "Switch to Day Mode" : "Switch to Night Mode");
         }
     }
 
