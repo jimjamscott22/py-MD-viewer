@@ -121,6 +121,7 @@ def create_app(base_dir: Path | None = None) -> Flask:
         template_folder=str(Path(__file__).parent / "templates"),
     )
     app.config["BASE_DIR"] = base_dir or Path.cwd()
+    app.config["TEMPLATES_AUTO_RELOAD"] = True
 
     # Pre-load CSS for export (read once, reuse on every request)
     static_css = Path(__file__).parent / "static" / "css"

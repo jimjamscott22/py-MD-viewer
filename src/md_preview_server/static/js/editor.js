@@ -453,9 +453,9 @@ function initEditor(filepath) {
         var script = document.createElement("script");
         script.type = "module";
         script.textContent = [
-            "import {EditorView,basicSetup} from 'https://cdn.jsdelivr.net/npm/codemirror@6/+esm';",
-            "import {markdown} from 'https://cdn.jsdelivr.net/npm/@codemirror/lang-markdown@6/+esm';",
-            "import {Compartment} from 'https://cdn.jsdelivr.net/npm/@codemirror/state@6.5.2/+esm';",
+            "import {EditorView,basicSetup} from 'codemirror';",
+            "import {markdown} from '@codemirror/lang-markdown';",
+            "import {Compartment} from '@codemirror/state';",
             "var tabId=" + JSON.stringify(tab.id) + ";",
             "var kbComp=new Compartment();",
             "var ul=EditorView.updateListener.of(function(u){if(u.docChanged&&window._activeTabId===tabId){window._tabDirty(tabId);window._editorPreview();}});",
@@ -469,13 +469,12 @@ function initEditor(filepath) {
             "if(window._activeTabId===tabId){if(window._setCmView)window._setCmView(view);window._editorPreview();}",
             "window._setKeybindingMode=async function(mode){",
             "var ext=[];",
-            "if(mode==='vim'){try{var v=await import('https://cdn.jsdelivr.net/npm/@replit/codemirror-vim@6.2.1/+esm');",
+            "if(mode==='vim'){try{var v=await import('@replit/codemirror-vim');",
             "ext=[v.vim({status:true})];",
             "v.Vim.defineEx('w','',function(){if(window._doSave)window._doSave();});",
             "v.Vim.defineEx('wq','',function(){if(window._doSave)window._doSave();});",
             "v.Vim.defineEx('q','',function(){if(window._exitEditor)window._exitEditor();});",
             "}catch(e){console.warn('Vim load failed',e);}}",
-            "else if(mode==='emacs'){try{var em=await import('https://cdn.jsdelivr.net/npm/@replit/codemirror-emacs@0.1.0/+esm');ext=[em.emacs()];}catch(e){console.warn('Emacs load failed',e);}}",
             "view.dispatch({effects:kbComp.reconfigure(ext)});};",
             "var m=localStorage.getItem('mdv-keybinding-mode')||'default';",
             "if(m!=='default')window._setKeybindingMode(m);"
