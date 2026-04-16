@@ -134,7 +134,7 @@ def create_app(base_dir: Path | None = None) -> Flask:
     @app.after_request
     def add_cache_headers(response):
         if request.path.startswith("/static/"):
-            response.headers["Cache-Control"] = "public, max-age=3600, must-revalidate"
+            response.headers["Cache-Control"] = "no-cache"
         return response
 
     # --- Page routes ---

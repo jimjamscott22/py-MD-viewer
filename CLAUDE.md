@@ -8,6 +8,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 # Install dependencies (creates .venv automatically)
 uv sync
 
+# Search Files
+rg <query>
+
 # Install with dev extras (pytest)
 uv sync --extra dev
 

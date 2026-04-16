@@ -453,9 +453,9 @@ function initEditor(filepath) {
         var script = document.createElement("script");
         script.type = "module";
         script.textContent = [
-            "import {EditorView,basicSetup} from 'https://cdn.jsdelivr.net/npm/codemirror@6.0.1/+esm';",
+            "import {EditorView,basicSetup} from 'https://cdn.jsdelivr.net/npm/codemirror@6/+esm';",
             "import {markdown} from 'https://cdn.jsdelivr.net/npm/@codemirror/lang-markdown@6/+esm';",
-            "import {Compartment} from 'https://cdn.jsdelivr.net/npm/@codemirror/state@6/+esm';",
+            "import {Compartment} from 'https://cdn.jsdelivr.net/npm/@codemirror/state@6.5.2/+esm';",
             "var tabId=" + JSON.stringify(tab.id) + ";",
             "var kbComp=new Compartment();",
             "var ul=EditorView.updateListener.of(function(u){if(u.docChanged&&window._activeTabId===tabId){window._tabDirty(tabId);window._editorPreview();}});",
@@ -466,7 +466,7 @@ function initEditor(filepath) {
             "kbComp.of([])],parent:document.getElementById('tab-pane-'+tabId)});",
             "var ref=window._getTabById(tabId);",
             "if(ref){ref.cmView=view;ref._kbComp=kbComp;}",
-            "if(window._activeTabId===tabId){window._cmView=view;window._editorPreview();}",
+            "if(window._activeTabId===tabId){if(window._setCmView)window._setCmView(view);window._editorPreview();}",
             "window._setKeybindingMode=async function(mode){",
             "var ext=[];",
             "if(mode==='vim'){try{var v=await import('https://cdn.jsdelivr.net/npm/@replit/codemirror-vim@6.2.1/+esm');",
@@ -531,11 +531,7 @@ function initEditor(filepath) {
     window._editorPreview = requestPreview;
 
     // Keep _cmView in sync so module scripts can write to it
-    Object.defineProperty(window, "_cmView", {
-        set: function(v) { _cmView = v; },
-        get: function() { return _cmView; },
-        configurable: true,
-    });
+    window._setCmView = function(v) { _cmView = v; };
 
     // Split divider drag
     initSplitDivider();
