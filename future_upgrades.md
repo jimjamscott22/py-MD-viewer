@@ -1,3 +1,8 @@
+
+```python
+def foo():
+    x + b = c
+```
 # Future Upgrades
 
 ## Features
