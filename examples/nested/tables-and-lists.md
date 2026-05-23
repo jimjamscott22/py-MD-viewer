@@ -2,7 +2,7 @@
 
 [TOC]
 
-## Tables
+Tables
 
 ### Basic Table
 

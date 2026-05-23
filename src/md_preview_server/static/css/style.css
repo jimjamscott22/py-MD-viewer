@@ -1107,10 +1107,6 @@ pre {
 .markdown-body h3 { font-size: 1.15rem; }
 .markdown-body h4 { font-size: 1rem; }
 
-.markdown-body h1::before { content: '# '; opacity: 0.4; font-size: 0.7em; }
-.markdown-body h2::before { content: '## '; opacity: 0.4; font-size: 0.7em; }
-.markdown-body h3::before { content: '### '; opacity: 0.4; font-size: 0.7em; }
-
 .markdown-body p {
     margin: 0 0 1em;
 }

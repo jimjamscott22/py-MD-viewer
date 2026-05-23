@@ -9,6 +9,8 @@ def test_heading():
     result = render_markdown("# Hello")
     assert "<h1" in result
     assert "Hello" in result
+    assert "headerlink" not in result
+    assert "&para;" not in result
 
 
 def test_bold_and_italic():

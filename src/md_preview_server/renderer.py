@@ -45,7 +45,7 @@ _EXTENSION_CONFIGS = {
         "guess_lang": False,
     },
     "toc": {
-        "permalink": True,
+        "permalink": False,
     },
     "pymdownx.arithmatex": {
         "generic": True,
