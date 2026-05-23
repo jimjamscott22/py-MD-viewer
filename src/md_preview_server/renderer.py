@@ -1,5 +1,6 @@
 """Markdown-to-HTML rendering pipeline with optional caching."""
 
+from collections import OrderedDict
 import re
 import threading
 from pathlib import Path
@@ -23,9 +24,33 @@ def _preprocess_mermaid(text: str) -> str:
 
     return _MERMAID_RE.sub(_replace, text)
 
-_render_cache: dict[tuple[str, float], tuple[str, dict[str, Any]]] = {}
+_render_cache: OrderedDict[tuple[str, int, int], tuple[str, dict[str, Any]]] = OrderedDict()
 _render_cache_lock = threading.Lock()
+_renderer_local = threading.local()
 _MAX_CACHE_SIZE = 200
+
+_EXTENSIONS = [
+    "pymdownx.arithmatex",
+    "fenced_code",
+    "codehilite",
+    "tables",
+    "toc",
+    "sane_lists",
+    "smarty",
+]
+_EXTENSION_CONFIGS = {
+    "codehilite": {
+        "css_class": "codehilite",
+        "linenums": False,
+        "guess_lang": False,
+    },
+    "toc": {
+        "permalink": True,
+    },
+    "pymdownx.arithmatex": {
+        "generic": True,
+    },
+}
 
 # Matches a YAML frontmatter block at the very start of a file
 _FRONTMATTER_RE = re.compile(r"^---[ \t]*\r?\n(.*?)\r?\n---[ \t]*\r?\n", re.DOTALL)
@@ -70,11 +95,12 @@ def render_markdown_cached(filepath: Path) -> str:
 def render_markdown_cached_with_meta(filepath: Path) -> tuple[str, dict[str, Any]]:
     """Render a file's markdown with caching, returning (html, metadata)."""
     stat = filepath.stat()
-    key = (str(filepath), stat.st_mtime)
+    key = (str(filepath), stat.st_mtime_ns, stat.st_size)
 
     with _render_cache_lock:
         cached = _render_cache.get(key)
         if cached is not None:
+            _render_cache.move_to_end(key)
             return cached
 
     text = filepath.read_text(encoding="utf-8")
@@ -82,9 +108,7 @@ def render_markdown_cached_with_meta(filepath: Path) -> tuple[str, dict[str, Any
 
     with _render_cache_lock:
         if len(_render_cache) >= _MAX_CACHE_SIZE:
-            keys = list(_render_cache.keys())
-            for k in keys[:len(keys) // 2]:
-                del _render_cache[k]
+            _render_cache.popitem(last=False)
         _render_cache[key] = result
 
     return result
@@ -99,30 +123,12 @@ def invalidate_render_cache() -> None:
 def _do_render(text: str) -> str:
     """Core markdown rendering logic."""
     text = _preprocess_mermaid(text)
-    extensions = [
-        "pymdownx.arithmatex",
-        "fenced_code",
-        "codehilite",
-        "tables",
-        "toc",
-        "sane_lists",
-        "smarty",
-    ]
-    extension_configs = {
-        "codehilite": {
-            "css_class": "codehilite",
-            "linenums": False,
-            "guess_lang": False,
-        },
-        "toc": {
-            "permalink": True,
-        },
-        "pymdownx.arithmatex": {
-            "generic": True,
-        },
-    }
-    return markdown.markdown(
-        text,
-        extensions=extensions,
-        extension_configs=extension_configs,
-    )
+    renderer = getattr(_renderer_local, "markdown", None)
+    if renderer is None:
+        renderer = markdown.Markdown(
+            extensions=_EXTENSIONS,
+            extension_configs=_EXTENSION_CONFIGS,
+        )
+        _renderer_local.markdown = renderer
+    renderer.reset()
+    return renderer.convert(text)

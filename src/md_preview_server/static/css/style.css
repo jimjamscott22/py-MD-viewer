@@ -145,6 +145,13 @@
     --scanline: transparent;
 }
 
+:root[data-low-effects="true"] {
+    --color-shadow: none;
+    --glow-sm: none;
+    --glow-md: none;
+    --scanline: transparent;
+}
+
 /* ─────────────────────────────────────────────
    BASE
 ───────────────────────────────────────────── */
@@ -403,6 +410,11 @@ pre {
     position: absolute;
     left: 4px;
     color: var(--color-accent);
+}
+
+.theme-menu-toggle {
+    border-top: 1px solid var(--color-border);
+    margin-top: 4px;
 }
 
 .sidebar-toggle {
@@ -2034,6 +2046,89 @@ pre {
 
 ::-webkit-scrollbar-thumb:hover {
     background: rgba(0, 255, 65, 0.4);
+}
+
+/* ─────────────────────────────────────────────
+   LOW EFFECTS / REDUCED MOTION
+───────────────────────────────────────────── */
+:root[data-low-effects="true"] body::before {
+    display: none;
+}
+
+:root[data-low-effects="true"] a:hover,
+:root[data-low-effects="true"] .sidebar-header .logo,
+:root[data-low-effects="true"] .sidebar-header .logo:hover,
+:root[data-low-effects="true"] .section-heading h2,
+:root[data-low-effects="true"] .doc-title,
+:root[data-low-effects="true"] .markdown-body h1,
+:root[data-low-effects="true"] .markdown-body h2,
+:root[data-low-effects="true"] .markdown-body h3,
+:root[data-low-effects="true"] .markdown-body h4,
+:root[data-low-effects="true"] .markdown-body h5,
+:root[data-low-effects="true"] .markdown-body h6,
+:root[data-low-effects="true"] .hero-panel h1,
+:root[data-low-effects="true"] .empty-state h2 {
+    text-shadow: none;
+}
+
+:root[data-low-effects="true"] .surface-panel,
+:root[data-low-effects="true"] .theme-menu,
+:root[data-low-effects="true"] .btn-primary,
+:root[data-low-effects="true"] .btn-primary:hover,
+:root[data-low-effects="true"] .btn-edit-toggle:hover,
+:root[data-low-effects="true"] .btn-edit-toggle.active,
+:root[data-low-effects="true"] .reading-progress,
+:root[data-low-effects="true"] .modal,
+:root[data-low-effects="true"] .upload-overlay-content,
+:root[data-low-effects="true"] .toast,
+:root[data-low-effects="true"] .split-divider:hover {
+    box-shadow: none;
+}
+
+:root[data-low-effects="true"] .modal-overlay,
+:root[data-low-effects="true"] .upload-overlay {
+    backdrop-filter: none;
+}
+
+:root[data-low-effects="true"] .sidebar-header .logo::after,
+:root[data-low-effects="true"] .modal,
+:root[data-low-effects="true"] .upload-overlay-content,
+:root[data-low-effects="true"] .toast,
+:root[data-low-effects="true"] .toast.toast-out,
+:root[data-low-effects="true"] .editor-status::before,
+:root[data-low-effects="true"] .ai-loading {
+    animation: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    :root {
+        --color-shadow: none;
+        --glow-sm: none;
+        --glow-md: none;
+        --scanline: transparent;
+    }
+
+    html {
+        scroll-behavior: auto;
+    }
+
+    body::before {
+        display: none;
+    }
+
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.001ms !important;
+        animation-iteration-count: 1 !important;
+        scroll-behavior: auto !important;
+        transition-duration: 0.001ms !important;
+    }
+
+    .modal-overlay,
+    .upload-overlay {
+        backdrop-filter: none;
+    }
 }
 
 /* ─────────────────────────────────────────────

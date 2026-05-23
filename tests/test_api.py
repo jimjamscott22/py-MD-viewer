@@ -14,6 +14,8 @@ def sample_dir(tmp_path):
     (tmp_path / "hello.md").write_text("# Hello World\n\nA test file.", encoding="utf-8")
     (tmp_path / "sub").mkdir()
     (tmp_path / "sub" / "nested.md").write_text("## Nested\n\nNested content.", encoding="utf-8")
+    (tmp_path / ".venv").mkdir()
+    (tmp_path / ".venv" / "ignored.md").write_text("# Ignore me", encoding="utf-8")
     return tmp_path
 
 
@@ -35,6 +37,7 @@ def test_api_files(client):
     assert "tree" in data
     assert "files" in data
     assert len(data["files"]) == 2
+    assert ".venv/ignored.md" not in {f["path"] for f in data["files"]}
 
 
 def test_api_files_metadata(client):
@@ -77,6 +80,7 @@ def test_api_search_by_path(client):
 # --- Phase 2: Upload & create ---
 
 def test_api_create(client, sample_dir):
+    client.get("/api/files")
     response = client.post(
         "/api/create",
         json={"path": "new-doc.md", "content": "# New Document"},
@@ -86,6 +90,10 @@ def test_api_create(client, sample_dir):
     assert data["success"] is True
     assert (sample_dir / "new-doc.md").exists()
     assert (sample_dir / "new-doc.md").read_text(encoding="utf-8") == "# New Document"
+
+    files_response = client.get("/api/files")
+    files = files_response.get_json()["files"]
+    assert {f["path"] for f in files} == {"hello.md", "new-doc.md", "sub/nested.md"}
 
 
 def test_api_create_auto_extension(client, sample_dir):
@@ -236,6 +244,7 @@ def test_api_directories(client, sample_dir):
     assert "current" in data
     assert "directories" in data
     assert isinstance(data["directories"], list)
+    assert data["md_count"] == 2
 
 
 def test_api_directories_default(client):

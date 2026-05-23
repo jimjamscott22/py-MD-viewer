@@ -10,6 +10,33 @@ var _isDirty = false;
 var _tabs = [];
 var _activeTabId = null;
 var _tabIdCounter = 0;
+var _codeMirrorLoader = null;
+var _vimLoader = null;
+
+function loadCodeMirrorModules() {
+    if (!_codeMirrorLoader) {
+        _codeMirrorLoader = Promise.all([
+            import("codemirror"),
+            import("@codemirror/lang-markdown"),
+            import("@codemirror/state")
+        ]).then(function(modules) {
+            return {
+                EditorView: modules[0].EditorView,
+                basicSetup: modules[0].basicSetup,
+                markdown: modules[1].markdown,
+                Compartment: modules[2].Compartment
+            };
+        });
+    }
+    return _codeMirrorLoader;
+}
+
+function loadVimModule() {
+    if (!_vimLoader) {
+        _vimLoader = import("@replit/codemirror-vim");
+    }
+    return _vimLoader;
+}
 
 function initEditor(filepath) {
     _filePath = filepath;
@@ -144,20 +171,24 @@ function initEditor(filepath) {
     // --- Live preview ---
     var previewTimer = null;
     var previewAbort = null;
+    var lastPreviewedContent = null;
     function requestPreview() {
         clearTimeout(previewTimer);
         previewTimer = setTimeout(function() {
             if (!_cmView) return;
+            var content = _cmView.state.doc.toString();
+            if (content === lastPreviewedContent) return;
             if (previewAbort) previewAbort.abort();
             previewAbort = new AbortController();
             fetch("/api/preview", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ content: _cmView.state.doc.toString() }),
+                body: JSON.stringify({ content: content }),
                 signal: previewAbort.signal,
             })
                 .then(function(r) { return r.json(); })
                 .then(function(data) {
+                    lastPreviewedContent = content;
                     var preview = document.getElementById("live-preview");
                     if (preview) {
                         preview.innerHTML = data.html;
@@ -401,6 +432,8 @@ function initEditor(filepath) {
         if (statusEl) statusEl.textContent = _isDirty ? "Unsaved changes" : "Editing";
         if (saveBtn) saveBtn.classList.toggle("unsaved", _isDirty);
         _renderTabBar();
+        setKeybindingMode(_keybindingMode);
+        requestPreview();
     }
 
     function _closeTab(id) {
@@ -450,36 +483,74 @@ function initEditor(filepath) {
         paneDiv.style.cssText = "height:100%;display:" + (tab.id === _activeTabId ? "" : "none") + ";";
         editorPane.appendChild(paneDiv);
 
-        var script = document.createElement("script");
-        script.type = "module";
-        script.textContent = [
-            "import {EditorView,basicSetup} from 'codemirror';",
-            "import {markdown} from '@codemirror/lang-markdown';",
-            "import {Compartment} from '@codemirror/state';",
-            "var tabId=" + JSON.stringify(tab.id) + ";",
-            "var kbComp=new Compartment();",
-            "var ul=EditorView.updateListener.of(function(u){if(u.docChanged&&window._activeTabId===tabId){window._tabDirty(tabId);window._editorPreview();}});",
-            "var view=new EditorView({doc:" + JSON.stringify(content) + ",",
-            "extensions:[basicSetup,markdown(),ul,EditorView.lineWrapping,",
-            "EditorView.theme({'&':{height:'100%'},'.cm-scroller':{overflow:'auto'},",
-            "'.cm-content':{fontFamily:'SFMono-Regular,Consolas,Liberation Mono,Menlo,monospace',fontSize:'14px'}}),",
-            "kbComp.of([])],parent:document.getElementById('tab-pane-'+tabId)});",
-            "var ref=window._getTabById(tabId);",
-            "if(ref){ref.cmView=view;ref._kbComp=kbComp;}",
-            "if(window._activeTabId===tabId){if(window._setCmView)window._setCmView(view);window._editorPreview();}",
-            "window._setKeybindingMode=async function(mode){",
-            "var ext=[];",
-            "if(mode==='vim'){try{var v=await import('@replit/codemirror-vim');",
-            "ext=[v.vim({status:true})];",
-            "v.Vim.defineEx('w','',function(){if(window._doSave)window._doSave();});",
-            "v.Vim.defineEx('wq','',function(){if(window._doSave)window._doSave();});",
-            "v.Vim.defineEx('q','',function(){if(window._exitEditor)window._exitEditor();});",
-            "}catch(e){console.warn('Vim load failed',e);}}",
-            "view.dispatch({effects:kbComp.reconfigure(ext)});};",
-            "var m=localStorage.getItem('mdv-keybinding-mode')||'default';",
-            "if(m!=='default')window._setKeybindingMode(m);"
-        ].join("\n");
-        document.body.appendChild(script);
+        loadCodeMirrorModules()
+            .then(function(cm) {
+                if (!_tabs.some(function(t) { return t.id === tab.id; })) return;
+
+                var kbComp = new cm.Compartment();
+                var updateListener = cm.EditorView.updateListener.of(function(update) {
+                    if (update.docChanged && window._activeTabId === tab.id) {
+                        window._tabDirty(tab.id);
+                        window._editorPreview();
+                    }
+                });
+                var view = new cm.EditorView({
+                    doc: content,
+                    extensions: [
+                        cm.basicSetup,
+                        cm.markdown(),
+                        updateListener,
+                        cm.EditorView.lineWrapping,
+                        cm.EditorView.theme({
+                            "&": { height: "100%" },
+                            ".cm-scroller": { overflow: "auto" },
+                            ".cm-content": {
+                                fontFamily: "SFMono-Regular,Consolas,Liberation Mono,Menlo,monospace",
+                                fontSize: "14px"
+                            }
+                        }),
+                        kbComp.of([])
+                    ],
+                    parent: paneDiv
+                });
+
+                tab.cmView = view;
+                tab._kbComp = kbComp;
+                if (_activeTabId === tab.id) {
+                    _cmView = view;
+                    setKeybindingMode(_keybindingMode);
+                    requestPreview();
+                }
+            })
+            .catch(function(error) {
+                console.warn("CodeMirror load failed", error);
+                if (window.showToast) window.showToast("Editor failed to load", "error");
+            });
+    }
+
+    function setKeybindingMode(mode) {
+        _keybindingMode = mode || "default";
+        var activeTab = _tabs.find(function(t) { return t.id === _activeTabId; });
+        if (!activeTab || !activeTab.cmView || !activeTab._kbComp) return;
+
+        if (_keybindingMode !== "vim") {
+            activeTab.cmView.dispatch({ effects: activeTab._kbComp.reconfigure([]) });
+            return;
+        }
+
+        loadVimModule()
+            .then(function(vimModule) {
+                if (_activeTabId !== activeTab.id || !activeTab.cmView || !activeTab._kbComp) return;
+                var ext = [vimModule.vim({ status: true })];
+                vimModule.Vim.defineEx("w", "", function() { if (window._doSave) window._doSave(); });
+                vimModule.Vim.defineEx("wq", "", function() { if (window._doSave) window._doSave(); });
+                vimModule.Vim.defineEx("q", "", function() { if (window._exitEditor) window._exitEditor(); });
+                activeTab.cmView.dispatch({ effects: activeTab._kbComp.reconfigure(ext) });
+            })
+            .catch(function(error) {
+                console.warn("Vim load failed", error);
+                if (window.showToast) window.showToast("Vim mode failed to load", "error");
+            });
     }
 
     // Tab bar click delegation
@@ -528,6 +599,7 @@ function initEditor(filepath) {
         if (saveBtn) saveBtn.classList.add("unsaved");
     };
     window._editorPreview = requestPreview;
+    window._setKeybindingMode = setKeybindingMode;
 
     // Keep _cmView in sync so module scripts can write to it
     window._setCmView = function(v) { _cmView = v; };

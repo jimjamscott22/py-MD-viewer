@@ -6,7 +6,6 @@ import queue
 import threading
 from datetime import datetime, timezone
 from pathlib import Path
-import openai
 
 from flask import Flask, Response, abort, jsonify, render_template, request
 from werkzeug.utils import secure_filename
@@ -69,20 +68,50 @@ def validate_path(base_dir: Path, rel_path: str) -> Path:
     return target
 
 
+def _iter_markdown_files(base_dir: Path):
+    """Yield markdown files under base_dir without descending excluded directories."""
+    stack = [base_dir.resolve()]
+    while stack:
+        current = stack.pop()
+        try:
+            with os.scandir(current) as entries:
+                sorted_entries = sorted(entries, key=lambda entry: entry.name.lower())
+        except (OSError, PermissionError):
+            continue
+
+        dirs = []
+        for entry in sorted_entries:
+            if entry.name in EXCLUDED_DIRS:
+                continue
+            try:
+                if entry.is_dir(follow_symlinks=False):
+                    dirs.append(Path(entry.path))
+                elif entry.is_file(follow_symlinks=False) and entry.name.lower().endswith(".md"):
+                    yield Path(entry.path)
+            except OSError:
+                continue
+
+        stack.extend(reversed(dirs))
+
+
+def _count_markdown_files(base_dir: Path) -> int:
+    """Count markdown files using the same pruned traversal as the file list."""
+    return sum(1 for _ in _iter_markdown_files(base_dir))
+
+
 def _scan_files(base_dir: Path) -> dict:
     """Scan the directory once and build both tree and file list."""
     global _file_cache
+    resolved_base = base_dir.resolve()
     with _file_cache_lock:
-        if _file_cache is not None and _file_cache["base_dir"] == base_dir:
+        if _file_cache is not None and _file_cache["base_dir"] == resolved_base:
             return _file_cache
 
     tree: dict = {}
     files: list[dict] = []
-    for md_file in sorted(base_dir.rglob("*.md")):
-        rel = md_file.relative_to(base_dir)
+    for md_file in _iter_markdown_files(resolved_base):
+        rel = md_file.relative_to(resolved_base)
         parts = rel.parts
-        if any(part in EXCLUDED_DIRS for part in parts):
-            continue
         # Build tree
         node = tree
         for part in parts[:-1]:
@@ -97,7 +126,7 @@ def _scan_files(base_dir: Path) -> dict:
             "modified": datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc).isoformat(),
         })
 
-    cache = {"base_dir": base_dir, "tree": tree, "files": files}
+    cache = {"base_dir": resolved_base, "tree": tree, "files": files}
     with _file_cache_lock:
         _file_cache = cache
     return cache
@@ -135,7 +164,10 @@ def create_app(base_dir: Path | None = None) -> Flask:
     @app.after_request
     def add_cache_headers(response):
         if request.path.startswith("/static/"):
-            response.headers["Cache-Control"] = "no-cache"
+            if request.query_string:
+                response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+            else:
+                response.headers["Cache-Control"] = "public, max-age=3600"
         return response
 
     # --- Page routes ---
@@ -356,8 +388,7 @@ def create_app(base_dir: Path | None = None) -> Flask:
         except PermissionError:
             return jsonify({"success": False, "error": "Permission denied"}), 403
 
-        md_count = sum(1 for _ in browse_path.rglob("*.md")
-                       if not any(p in EXCLUDED_DIRS for p in _.relative_to(browse_path).parts))
+        md_count = _count_markdown_files(browse_path)
 
         return jsonify({
             "current": str(browse_path),
@@ -473,6 +504,8 @@ def create_app(base_dir: Path | None = None) -> Flask:
         model = os.environ.get("LLM_MODEL", "local-model")
 
         try:
+            import openai
+
             client = openai.OpenAI(api_key=api_key, base_url=base_url)
             response = client.chat.completions.create(
                 model=model,

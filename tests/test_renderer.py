@@ -1,6 +1,8 @@
 """Tests for the markdown renderer."""
 
-from md_preview_server.renderer import render_markdown
+import os
+
+from md_preview_server.renderer import render_markdown, render_markdown_cached_with_meta
 
 
 def test_heading():
@@ -55,3 +57,19 @@ def test_toc():
     md = "[TOC]\n\n# Section One\n\n## Section Two"
     result = render_markdown(md)
     assert "toc" in result.lower()
+
+
+def test_cached_render_refreshes_when_size_changes_with_same_mtime(tmp_path):
+    doc = tmp_path / "doc.md"
+    doc.write_text("# One\n", encoding="utf-8")
+    stat = doc.stat()
+
+    html, _ = render_markdown_cached_with_meta(doc)
+    assert "One" in html
+
+    doc.write_text("# Two\n\nextra text\n", encoding="utf-8")
+    os.utime(doc, ns=(stat.st_atime_ns, stat.st_mtime_ns))
+
+    html, _ = render_markdown_cached_with_meta(doc)
+    assert "Two" in html
+    assert "One" not in html
