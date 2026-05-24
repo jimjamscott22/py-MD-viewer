@@ -1,0 +1,45 @@
+<mxfile host="app.diagrams.net" modified="2026-05-24T00:00:00.000Z" agent="Mozilla/5.0" version="24.7.17" type="device">
+  <diagram id="components-1" name="Component Relationships">
+    <mxGraphModel dx="1280" dy="720" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1800" pageHeight="1100" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+
+        <mxCell id="100" value="Web Layer" style="swimlane;rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="40" y="50" width="520" height="420" as="geometry"/>
+        </mxCell>
+        <mxCell id="101" value="create_app(base_dir)\nRoute registration" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1ecff;strokeColor=#6c8ebf;" vertex="1" parent="100"><mxGeometry x="20" y="60" width="220" height="80" as="geometry"/></mxCell>
+        <mxCell id="102" value="validate_path(base_dir, rel_path)\nPath traversal guard" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1ecff;strokeColor=#6c8ebf;" vertex="1" parent="100"><mxGeometry x="270" y="60" width="220" height="80" as="geometry"/></mxCell>
+        <mxCell id="103" value="notify_clients() / notify_tree_changed()\nSSE broadcaster" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1ecff;strokeColor=#6c8ebf;" vertex="1" parent="100"><mxGeometry x="20" y="170" width="220" height="90" as="geometry"/></mxCell>
+        <mxCell id="104" value="_scan_files() + _file_cache\nTree/list metadata cache" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1ecff;strokeColor=#6c8ebf;" vertex="1" parent="100"><mxGeometry x="270" y="170" width="220" height="90" as="geometry"/></mxCell>
+        <mxCell id="105" value="Templates\nbase.html / index.html / view.html" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1ecff;strokeColor=#6c8ebf;" vertex="1" parent="100"><mxGeometry x="20" y="290" width="470" height="80" as="geometry"/></mxCell>
+
+        <mxCell id="110" value="Rendering Layer" style="swimlane;rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="620" y="50" width="520" height="420" as="geometry"/>
+        </mxCell>
+        <mxCell id="111" value="render_markdown()\nrender_markdown_with_meta()" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e7f5e6;strokeColor=#82b366;" vertex="1" parent="110"><mxGeometry x="20" y="60" width="220" height="80" as="geometry"/></mxCell>
+        <mxCell id="112" value="render_markdown_cached_with_meta()\nKey: path + mtime + size" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e7f5e6;strokeColor=#82b366;" vertex="1" parent="110"><mxGeometry x="270" y="60" width="220" height="80" as="geometry"/></mxCell>
+        <mxCell id="113" value="extract_frontmatter()\nYAML metadata parsing" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e7f5e6;strokeColor=#82b366;" vertex="1" parent="110"><mxGeometry x="20" y="170" width="220" height="80" as="geometry"/></mxCell>
+        <mxCell id="114" value="_preprocess_mermaid()\nMermaid fence transform" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e7f5e6;strokeColor=#82b366;" vertex="1" parent="110"><mxGeometry x="270" y="170" width="220" height="80" as="geometry"/></mxCell>
+        <mxCell id="115" value="python-markdown + extensions\nPygments, TOC, tables, arithmatex" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e7f5e6;strokeColor=#82b366;" vertex="1" parent="110"><mxGeometry x="20" y="280" width="470" height="90" as="geometry"/></mxCell>
+
+        <mxCell id="120" value="Watcher + Clients" style="swimlane;rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="1200" y="50" width="540" height="420" as="geometry"/>
+        </mxCell>
+        <mxCell id="121" value="start_watcher() / stop_watcher()" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff8df;strokeColor=#d6b656;" vertex="1" parent="120"><mxGeometry x="20" y="60" width="230" height="80" as="geometry"/></mxCell>
+        <mxCell id="122" value="MarkdownFileHandler\n(debounced .md events)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff8df;strokeColor=#d6b656;" vertex="1" parent="120"><mxGeometry x="280" y="60" width="230" height="80" as="geometry"/></mxCell>
+        <mxCell id="123" value="/events (SSE)\nQueue per subscriber" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff8df;strokeColor=#d6b656;" vertex="1" parent="120"><mxGeometry x="20" y="170" width="230" height="80" as="geometry"/></mxCell>
+        <mxCell id="124" value="Frontend JS\neditor.js, live-reload.js, file-operations.js" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff8df;strokeColor=#d6b656;" vertex="1" parent="120"><mxGeometry x="280" y="170" width="230" height="80" as="geometry"/></mxCell>
+        <mxCell id="125" value="AI assistant route\n/api/ai/ask -> OpenAI-compatible endpoint" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff8df;strokeColor=#d6b656;" vertex="1" parent="120"><mxGeometry x="20" y="280" width="490" height="90" as="geometry"/></mxCell>
+
+        <mxCell id="130" value="calls" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#6c8ebf;strokeWidth=2;endArrow=classic;html=1;" edge="1" parent="1" source="101" target="111"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="131" value="uses" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#6c8ebf;strokeWidth=2;endArrow=classic;html=1;" edge="1" parent="1" source="101" target="112"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="132" value="invalidates" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#6c8ebf;strokeWidth=2;dashed=1;endArrow=classic;html=1;" edge="1" parent="1" source="103" target="104"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="133" value="renders" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#82b366;strokeWidth=2;endArrow=classic;html=1;" edge="1" parent="1" source="111" target="115"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="134" value="feeds" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#82b366;strokeWidth=2;endArrow=classic;html=1;" edge="1" parent="1" source="113" target="111"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="135" value="notifies" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#d6b656;strokeWidth=2;endArrow=classic;html=1;" edge="1" parent="1" source="122" target="103"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="136" value="updates" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#d6b656;strokeWidth=2;endArrow=classic;html=1;" edge="1" parent="1" source="123" target="124"><mxGeometry relative="1" as="geometry"/></mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
