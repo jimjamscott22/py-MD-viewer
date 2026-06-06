@@ -257,12 +257,12 @@ def create_app(base_dir: Path | None = None) -> Flask:
         query_lower = query.lower()
         base = app.config["BASE_DIR"]
         results = []
+        truncated = False
         for f in get_file_list(base):
             if len(results) >= 50:
+                truncated = True
                 break
             target = validate_path(base, f["path"])
-            if not target.exists():
-                continue
             try:
                 lines = target.read_text(encoding="utf-8").splitlines()
             except (UnicodeDecodeError, OSError):
@@ -280,8 +280,9 @@ def create_app(base_dir: Path | None = None) -> Flask:
                         "snippet": snippet,
                     })
                     if len(results) >= 50:
+                        truncated = True
                         break
-        return jsonify({"results": results, "truncated": len(results) >= 50})
+        return jsonify({"results": results, "truncated": truncated})
 
     # --- Phase 2: Upload & create ---
 

@@ -312,3 +312,16 @@ def test_api_search_content_skips_excluded_dirs(client):
     response = client.get("/api/search/content?q=ignore")
     data = response.get_json()
     assert not any(".venv" in r["path"] for r in data["results"])
+
+
+def test_api_search_content_truncates_at_50(tmp_path):
+    # Create a file with 60 lines all matching "keyword"
+    content = "\n".join(f"line {i} keyword here" for i in range(60))
+    (tmp_path / "big.md").write_text(content, encoding="utf-8")
+    app = create_app(base_dir=tmp_path)
+    app.config["TESTING"] = True
+    with app.test_client() as c:
+        response = c.get("/api/search/content?q=keyword")
+        data = response.get_json()
+        assert len(data["results"]) == 50
+        assert data["truncated"] is True
