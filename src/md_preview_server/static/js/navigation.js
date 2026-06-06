@@ -117,6 +117,7 @@
         var searchMode = "filename"; // "filename" | "content"
         var modeToggleBtn = document.getElementById("search-mode-toggle");
         var modeLabelEl = modeToggleBtn ? modeToggleBtn.querySelector(".search-mode-label") : null;
+        var currentRequestId = 0;
 
         function setSearchMode(mode) {
             searchMode = mode;
@@ -165,6 +166,7 @@
         });
 
         function runSearch(query) {
+            var requestId = ++currentRequestId;
             if (searchMode === "content") {
                 if (query.length < 2) {
                     resetSearch();
@@ -173,14 +175,20 @@
                 fetch("/api/search/content?q=" + encodeURIComponent(query))
                     .then(function (response) { return response.json(); })
                     .then(function (data) {
+                        if (requestId !== currentRequestId) { return; }
                         sidebarTree.style.display = "none";
                         searchResults.style.display = "";
                         renderContentResults(data.results || [], query, data.truncated);
+                    })
+                    .catch(function () {
+                        if (requestId !== currentRequestId) { return; }
+                        resetSearch();
                     });
             } else {
                 fetch("/api/search?q=" + encodeURIComponent(query))
                     .then(function (response) { return response.json(); })
                     .then(function (data) {
+                        if (requestId !== currentRequestId) { return; }
                         sidebarTree.style.display = "none";
                         searchResults.style.display = "";
 
@@ -221,7 +229,7 @@
                 .replace(highlightRe, "<mark>$1</mark>");
             html += '<div class="search-content-result">';
             html += '<a href="/view/' + encodeURI(result.path) + '">'
-                + escapeHtml(result.path) + ':' + result.line_number + '</a>';
+                + escapeHtml(result.path) + ':' + escapeHtml(String(result.line_number)) + '</a>';
             html += '<div class="search-snippet">' + snippetHtml + '</div>';
             html += '</div>';
         });
