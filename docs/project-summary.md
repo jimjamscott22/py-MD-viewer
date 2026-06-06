@@ -160,6 +160,7 @@ flowchart LR
 | --- | --- | --- |
 | GET | `/api/files` | Return tree, flat file list, and base directory |
 | GET | `/api/search?q=` | Search file name/path |
+| GET | `/api/search/content?q=` | Full-text content search with snippet results |
 | POST | `/api/upload` | Upload `.md` files |
 | POST | `/api/create` | Create markdown file |
 | PUT | `/api/rename` | Rename/move markdown file |

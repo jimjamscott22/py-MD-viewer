@@ -54,6 +54,7 @@ This is a local Flask server (`src/md_preview_server/`) that renders `.md` files
 **REST API surface:**
 - `GET /api/files` — file tree + flat list with metadata
 - `GET /api/search?q=` — filename/path search
+- `GET /api/search/content?q=` — full-text content search; returns `{path, line_number, snippet}` results (max 50, `truncated` flag); requires `len(q) >= 2`
 - `POST /api/upload`, `POST /api/create` — add files
 - `PUT /api/rename`, `DELETE /api/delete` — mutate files
 - `GET /api/directories`, `POST /api/set-base-directory` — change watched directory at runtime

@@ -10,6 +10,12 @@ A local Markdown preview server with live reload, syntax highlighting, and a fil
 - Live preview with auto-reload when files change
 - Table of contents generation with `[TOC]` marker
 - Responsive two-column layout with collapsible sidebar
+- In-browser editor (CodeMirror) with live preview
+- File operations: create, upload, rename, delete
+- Search by filename or full-text content search with snippet preview
+- Export documents to standalone HTML
+- Multiple colour themes (Terminal, Amber, Dracula, Nord, Paper)
+- AI assistant panel (requires a local or remote OpenAI-compatible LLM)
 
 ## Requirements
 
