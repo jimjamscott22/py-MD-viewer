@@ -270,3 +270,44 @@ def test_api_set_base_directory_invalid(client):
         json={"path": "/nonexistent/path/12345"},
     )
     assert response.status_code == 400
+
+
+# --- Content search ---
+
+def test_api_search_content_returns_empty_for_short_query(client):
+    response = client.get("/api/search/content?q=a")
+    assert response.status_code == 200
+    data = response.get_json()
+    assert data["results"] == []
+
+
+def test_api_search_content_finds_match(client):
+    response = client.get("/api/search/content?q=test file")
+    data = response.get_json()
+    assert any(r["path"] == "hello.md" for r in data["results"])
+
+
+def test_api_search_content_returns_snippet(client):
+    response = client.get("/api/search/content?q=test file")
+    data = response.get_json()
+    result = next(r for r in data["results"] if r["path"] == "hello.md")
+    assert "test file" in result["snippet"].lower()
+    assert "line_number" in result
+
+
+def test_api_search_content_no_match_returns_empty(client):
+    response = client.get("/api/search/content?q=zzznomatch")
+    data = response.get_json()
+    assert data["results"] == []
+
+
+def test_api_search_content_case_insensitive(client):
+    response = client.get("/api/search/content?q=HELLO")
+    data = response.get_json()
+    assert any(r["path"] == "hello.md" for r in data["results"])
+
+
+def test_api_search_content_skips_excluded_dirs(client):
+    response = client.get("/api/search/content?q=ignore")
+    data = response.get_json()
+    assert not any(".venv" in r["path"] for r in data["results"])

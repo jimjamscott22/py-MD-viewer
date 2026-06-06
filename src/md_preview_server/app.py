@@ -249,6 +249,40 @@ def create_app(base_dir: Path | None = None) -> Flask:
                 results.append(f)
         return jsonify({"results": results})
 
+    @app.route("/api/search/content")
+    def api_search_content():
+        query = request.args.get("q", "").strip()
+        if len(query) < 2:
+            return jsonify({"results": []})
+        query_lower = query.lower()
+        base = app.config["BASE_DIR"]
+        results = []
+        for f in get_file_list(base):
+            if len(results) >= 50:
+                break
+            target = validate_path(base, f["path"])
+            if not target.exists():
+                continue
+            try:
+                lines = target.read_text(encoding="utf-8").splitlines()
+            except (UnicodeDecodeError, OSError):
+                continue
+            for i, line in enumerate(lines):
+                if query_lower in line.lower():
+                    start = max(0, i - 1)
+                    end = min(len(lines), i + 2)
+                    snippet = "\n".join(lines[start:end])
+                    if len(snippet) > 200:
+                        snippet = snippet[:200]
+                    results.append({
+                        "path": f["path"],
+                        "line_number": i + 1,
+                        "snippet": snippet,
+                    })
+                    if len(results) >= 50:
+                        break
+        return jsonify({"results": results, "truncated": len(results) >= 50})
+
     # --- Phase 2: Upload & create ---
 
     @app.route("/api/upload", methods=["POST"])
