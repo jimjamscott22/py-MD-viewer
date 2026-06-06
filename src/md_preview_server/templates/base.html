@@ -32,7 +32,12 @@
             </div>
         </div>
         <div class="sidebar-search">
-            <input type="text" id="search-input" placeholder="Search files or press /" autocomplete="off">
+            <div class="search-bar-row">
+                <input type="text" id="search-input" placeholder="Search files or press /" autocomplete="off">
+                <button class="search-mode-toggle" id="search-mode-toggle" title="Switch to content search" aria-pressed="false">
+                    <span class="search-mode-label">name</span>
+                </button>
+            </div>
         </div>
         <div class="sidebar-content">
             <div class="tree-controls">
