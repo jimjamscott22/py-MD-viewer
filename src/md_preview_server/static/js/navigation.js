@@ -114,6 +114,36 @@
             return;
         }
 
+        var searchMode = "filename"; // "filename" | "content"
+        var modeToggleBtn = document.getElementById("search-mode-toggle");
+        var modeLabelEl = modeToggleBtn ? modeToggleBtn.querySelector(".search-mode-label") : null;
+
+        function setSearchMode(mode) {
+            searchMode = mode;
+            var isContent = mode === "content";
+            if (modeToggleBtn) {
+                modeToggleBtn.classList.toggle("is-active", isContent);
+                modeToggleBtn.setAttribute("aria-pressed", isContent ? "true" : "false");
+                modeToggleBtn.setAttribute("title", isContent ? "Switch to filename search" : "Switch to content search");
+            }
+            if (modeLabelEl) {
+                modeLabelEl.textContent = isContent ? "text" : "name";
+            }
+            searchInput.placeholder = isContent ? "Search file content..." : "Search files or press /";
+            var query = searchInput.value.trim();
+            if (query) {
+                runSearch(query);
+            } else {
+                resetSearch();
+            }
+        }
+
+        if (modeToggleBtn) {
+            modeToggleBtn.addEventListener("click", function () {
+                setSearchMode(searchMode === "filename" ? "content" : "filename");
+            });
+        }
+
         searchInput.addEventListener("input", function () {
             clearTimeout(debounceTimer);
             var query = searchInput.value.trim();
@@ -121,8 +151,33 @@
                 resetSearch();
                 return;
             }
-
             debounceTimer = setTimeout(function () {
+                runSearch(query);
+            }, 220);
+        });
+
+        searchInput.addEventListener("keydown", function (event) {
+            if (event.key === "Escape") {
+                searchInput.value = "";
+                resetSearch();
+                searchInput.blur();
+            }
+        });
+
+        function runSearch(query) {
+            if (searchMode === "content") {
+                if (query.length < 2) {
+                    resetSearch();
+                    return;
+                }
+                fetch("/api/search/content?q=" + encodeURIComponent(query))
+                    .then(function (response) { return response.json(); })
+                    .then(function (data) {
+                        sidebarTree.style.display = "none";
+                        searchResults.style.display = "";
+                        renderContentResults(data.results || [], query, data.truncated);
+                    });
+            } else {
                 fetch("/api/search?q=" + encodeURIComponent(query))
                     .then(function (response) { return response.json(); })
                     .then(function (data) {
@@ -147,16 +202,35 @@
                         html += "</ul>";
                         searchResults.innerHTML = html;
                     });
-            }, 220);
+            }
+        }
+    }
+
+    function renderContentResults(results, query, truncated) {
+        if (!results || results.length === 0) {
+            searchResults.innerHTML = '<p class="empty-message">No results found.</p>';
+            return;
+        }
+
+        var escapedQuery = query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        var highlightRe = new RegExp("(" + escapedQuery + ")", "gi");
+
+        var html = "";
+        results.forEach(function (result) {
+            var snippetHtml = escapeHtml(result.snippet)
+                .replace(highlightRe, "<mark>$1</mark>");
+            html += '<div class="search-content-result">';
+            html += '<a href="/view/' + encodeURI(result.path) + '">'
+                + escapeHtml(result.path) + ':' + result.line_number + '</a>';
+            html += '<div class="search-snippet">' + snippetHtml + '</div>';
+            html += '</div>';
         });
 
-        searchInput.addEventListener("keydown", function (event) {
-            if (event.key === "Escape") {
-                searchInput.value = "";
-                resetSearch();
-                searchInput.blur();
-            }
-        });
+        if (truncated) {
+            html += '<p class="search-truncated-notice">Showing first 50 results.</p>';
+        }
+
+        searchResults.innerHTML = html;
     }
 
     function resetSearch() {
