@@ -279,6 +279,7 @@ def test_api_search_content_returns_empty_for_short_query(client):
     assert response.status_code == 200
     data = response.get_json()
     assert data["results"] == []
+    assert data["truncated"] == False
 
 
 def test_api_search_content_finds_match(client):

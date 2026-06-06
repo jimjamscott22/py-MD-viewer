@@ -253,7 +253,7 @@ def create_app(base_dir: Path | None = None) -> Flask:
     def api_search_content():
         query = request.args.get("q", "").strip()
         if len(query) < 2:
-            return jsonify({"results": []})
+            return jsonify({"results": [], "truncated": False})
         query_lower = query.lower()
         base = app.config["BASE_DIR"]
         results = []
