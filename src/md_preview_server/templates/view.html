@@ -155,24 +155,29 @@
     </div>
 
     <aside class="doc-sidebar-panel surface-panel" id="doc-sidebar-panel">
-        <p class="eyebrow">On this page</p>
-        <div class="doc-outline" id="doc-outline">
-            <p class="empty-message">No headings found yet.</p>
+        <div class="rail-tabs" role="tablist" aria-label="Document panel">
+            <button class="rail-tab active" id="rail-tab-outline" role="tab" aria-selected="true" aria-controls="rail-panel-outline" data-rail-tab="outline">On this page</button>
+            <button class="rail-tab" id="rail-tab-assistant" role="tab" aria-selected="false" aria-controls="rail-panel-assistant" data-rail-tab="assistant">Assistant</button>
         </div>
-        
-        <hr style="margin: 20px 0; border: none; border-top: 1px solid var(--color-border);">
-        
-        <p class="eyebrow">AI Assistant</p>
-        <div class="ai-assistant-container">
-            <div id="ai-assistant-history" class="ai-history">
-                <div class="ai-msg ai-msg-assistant">
-                    <div class="ai-msg-bubble">Hi! I see you are viewing <strong>{{ filename }}</strong>. How can I help you?</div>
-                </div>
+
+        <div class="rail-panel" id="rail-panel-outline" role="tabpanel" aria-labelledby="rail-tab-outline">
+            <div class="doc-outline" id="doc-outline">
+                <p class="empty-message">No headings found yet.</p>
             </div>
-            <form id="ai-assistant-form" class="ai-input-form">
-                <input type="text" id="ai-assistant-input" placeholder="Ask about this document..." autocomplete="off">
-                <button type="submit" id="ai-assistant-submit" class="btn btn-sm btn-primary" title="Send (Enter)">&#10148;</button>
-            </form>
+        </div>
+
+        <div class="rail-panel" id="rail-panel-assistant" role="tabpanel" aria-labelledby="rail-tab-assistant" style="display:none;">
+            <div class="ai-assistant-container">
+                <div id="ai-assistant-history" class="ai-history">
+                    <div class="ai-msg ai-msg-assistant">
+                        <div class="ai-msg-bubble">Hi! I see you are viewing <strong>{{ filename }}</strong>. How can I help you?</div>
+                    </div>
+                </div>
+                <form id="ai-assistant-form" class="ai-input-form">
+                    <input type="text" id="ai-assistant-input" placeholder="Ask about this document..." autocomplete="off">
+                    <button type="submit" id="ai-assistant-submit" class="btn btn-sm btn-primary" title="Send (Enter)">&#10148;</button>
+                </form>
+            </div>
         </div>
     </aside>
 </section>
@@ -247,6 +252,31 @@
 <script>
     initLiveReload("{{ filepath }}");
     initEditor("{{ filepath }}");
+
+    // Right-rail tabs: switch between the outline and the AI assistant
+    (function () {
+        var tabs = document.querySelectorAll(".rail-tab");
+        function show(which) {
+            tabs.forEach(function (tab) {
+                var on = tab.getAttribute("data-rail-tab") === which;
+                tab.classList.toggle("active", on);
+                tab.setAttribute("aria-selected", on ? "true" : "false");
+            });
+            var o = document.getElementById("rail-panel-outline");
+            var a = document.getElementById("rail-panel-assistant");
+            if (o) o.style.display = which === "outline" ? "" : "none";
+            if (a) a.style.display = which === "assistant" ? "" : "none";
+            if (which === "assistant") {
+                var input = document.getElementById("ai-assistant-input");
+                if (input) input.focus();
+            }
+        }
+        tabs.forEach(function (tab) {
+            tab.addEventListener("click", function () {
+                show(tab.getAttribute("data-rail-tab"));
+            });
+        });
+    })();
 </script>
 <script>
 // Diagram/math rendering — called on page load and after live preview updates
@@ -269,7 +299,7 @@ window.renderDiagrams = function(container) {
     }
 };
 
-// Mermaid — lazy load only if page has diagrams
+// Mermaid — lazy-load only if the page has diagrams
 if (document.querySelector('#view-container .mermaid')) {
     import('https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs')
         .then(function(mod) {
@@ -281,7 +311,7 @@ if (document.querySelector('#view-container .mermaid')) {
         });
 }
 
-// KaTeX — lazy load only if page has math
+// KaTeX — lazy-load only if the page has math
 if (document.querySelector('#view-container .arithmatex')) {
     var _katexLink = document.createElement('link');
     _katexLink.rel = 'stylesheet';
