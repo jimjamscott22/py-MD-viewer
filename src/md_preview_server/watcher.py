@@ -1,11 +1,13 @@
 """File system watcher for markdown files."""
 
+import os
 import time
 import threading
 from pathlib import Path
 from typing import Callable
 
 from watchdog.observers import Observer
+from watchdog.observers.api import BaseObserver
 from watchdog.events import FileSystemEventHandler, FileSystemEvent
 
 
@@ -23,7 +25,8 @@ class MarkdownFileHandler(FileSystemEventHandler):
     def _handle_event(self, event: FileSystemEvent) -> None:
         if event.is_directory:
             return
-        src_path = Path(event.src_path)
+        # event.src_path can be bytes on some platforms; normalize to str
+        src_path = Path(os.fsdecode(event.src_path))
         if src_path.suffix.lower() != ".md":
             return
         try:
@@ -46,7 +49,7 @@ class MarkdownFileHandler(FileSystemEventHandler):
         self._handle_event(event)
 
 
-def start_watcher(base_dir: Path, callback: Callable[[str], None]) -> Observer:
+def start_watcher(base_dir: Path, callback: Callable[[str], None]) -> BaseObserver:
     """Start watching base_dir for .md file changes. Runs as a daemon thread."""
     handler = MarkdownFileHandler(callback, base_dir)
     observer = Observer()
@@ -56,7 +59,7 @@ def start_watcher(base_dir: Path, callback: Callable[[str], None]) -> Observer:
     return observer
 
 
-def stop_watcher(observer: Observer) -> None:
+def stop_watcher(observer: BaseObserver) -> None:
     """Stop a running file watcher."""
     observer.stop()
     observer.join(timeout=2)

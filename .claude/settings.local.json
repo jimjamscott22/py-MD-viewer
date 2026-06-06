@@ -21,7 +21,15 @@
       "mcp__plugin_playwright_playwright__browser_close",
       "mcp__plugin_playwright_playwright__browser_snapshot",
       "mcp__plugin_playwright_playwright__browser_click",
-      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:8000/)"
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:8000/)",
+      "Bash(git commit -m ' *)",
+      "Bash(git -C /home/jimjamscozz/Desktop/GitHub-Repos/py-MD-viewer add src/md_preview_server/app.py tests/test_api.py)",
+      "Bash(git -C /home/jimjamscozz/Desktop/GitHub-Repos/py-MD-viewer commit -m ' *)",
+      "Bash(git commit *)",
+      "Bash(echo \"Exit: $?\")",
+      "Bash(node --check src/md_preview_server/static/js/navigation.js)",
+      "Bash(\" /home/jimjamscozz/Desktop/GitHub-Repos/py-MD-viewer/src/md_preview_server/static/js/navigation.js)",
+      "Bash(grep -n \"let \\\\|const \\\\|=>\\\\|`\" /home/jimjamscozz/Desktop/GitHub-Repos/py-MD-viewer/src/md_preview_server/static/js/navigation.js)"
     ]
   }
 }
