@@ -1,0 +1,138 @@
+{
+  "pyinstaller_entry.py": {
+    "mtime": 1780722585974.8987,
+    "hash": "04e61e9c30566ebd003039d1aea1fcf4"
+  },
+  "src/md_preview_server/__init__.py": {
+    "mtime": 1770959625588.9805,
+    "hash": "ae1fd9331f9dbb504ea50e57646d5e30"
+  },
+  "src/md_preview_server/app.py": {
+    "mtime": 1780722578734.6753,
+    "hash": "6cea0393b204148cc110e5fc60ce9568"
+  },
+  "src/md_preview_server/renderer.py": {
+    "mtime": 1779562479632.0564,
+    "hash": "5520b245d6901b5ffc896796a365fb64"
+  },
+  "src/md_preview_server/static/js/ai-assistant.js": {
+    "mtime": 1773978864676.27,
+    "hash": "61a2844131100cd25ae5745bfe6b0b1c"
+  },
+  "src/md_preview_server/static/js/directory-picker.js": {
+    "mtime": 1771198200609.0005,
+    "hash": "0c0719130eecc638f211233a715716b7"
+  },
+  "src/md_preview_server/static/js/editor.js": {
+    "mtime": 1779512226214.841,
+    "hash": "c074a6c83c17f42e814047d78a1e08bc"
+  },
+  "src/md_preview_server/static/js/file-operations.js": {
+    "mtime": 1773899762858.9814,
+    "hash": "2cb30cfed4f654850d5a315c2e4b2d46"
+  },
+  "src/md_preview_server/static/js/live-reload.js": {
+    "mtime": 1772777813147.8599,
+    "hash": "9d29b61bc31dcf7cae4b207b5d78910e"
+  },
+  "src/md_preview_server/static/js/navigation.js": {
+    "mtime": 1780722578735.6758,
+    "hash": "2ce753e04ea4022cf73672b54e59ccd1"
+  },
+  "src/md_preview_server/watcher.py": {
+    "mtime": 1780722578737.6758,
+    "hash": "6b50c57afd6cbd7acff2940e2b352c6c"
+  },
+  "tests/__init__.py": {
+    "mtime": 1770959786817.4043,
+    "hash": "d41d8cd98f00b204e9800998ecf8427e"
+  },
+  "tests/test_api.py": {
+    "mtime": 1780722578737.6758,
+    "hash": "4e1d7a0f549d2d28672c6936e1c435dd"
+  },
+  "tests/test_app.py": {
+    "mtime": 1770959799341.7468,
+    "hash": "8baca57fde161f20d67890a8df8f253f"
+  },
+  "tests/test_editor.py": {
+    "mtime": 1771198353397.7324,
+    "hash": "0b6c0382aba2bd7c3220a603bcff7634"
+  },
+  "tests/test_export.py": {
+    "mtime": 1772359194239.042,
+    "hash": "b0feef4b2712e42c4e1688d6a8fcdea5"
+  },
+  "tests/test_renderer.py": {
+    "mtime": 1779562479633.0564,
+    "hash": "462ee9553b8d46db11756f85bef1b710"
+  },
+  "tests/test_startup.py": {
+    "mtime": 1779512226217.8374,
+    "hash": "907e926f0e3159b62c65dff0669b3bc7"
+  },
+  ".graphify/memory/query_20260813_014602_what_connects_the_pyinstaller_entry_point__project.md": {
+    "mtime": 1786585562234.867,
+    "hash": "8ad41be9ce7a531871d5f28cbeede23e"
+  },
+  ".graphify/memory/query_20260813_022235_are_there_any_fixes_to_be_done_after_reviewing_the.md": {
+    "mtime": 1786587755700.4614,
+    "hash": "01e9756b09e885d22aae135f6370a703"
+  },
+  "CLAUDE.md": {
+    "mtime": 1780722578732.6758,
+    "hash": "dcde4c18c0d42e7ebd5088fc4ae783f6"
+  },
+  "README.md": {
+    "mtime": 1780722578732.6758,
+    "hash": "afe0407efd1b7b82e2523600e5a945bf"
+  },
+  "_railsmoke.md": {
+    "mtime": 1780722602992.8574,
+    "hash": "6d265bb1e1ebfe365008ec0454e3264e"
+  },
+  "docs/project-summary.md": {
+    "mtime": 1780722578733.6763,
+    "hash": "3bb7bff52fd6cd452e21df03e607a625"
+  },
+  "docs/superpowers/plans/2026-06-05-full-text-search.md": {
+    "mtime": 1780722578733.6763,
+    "hash": "ece4c0ea2b6bc75aee00827f8fc332b8"
+  },
+  "docs/superpowers/specs/2026-06-05-full-text-search-design.md": {
+    "mtime": 1780722578734.6753,
+    "hash": "6a062c7b5daa35b5c4a44e1c6de121fc"
+  },
+  "docs/ui-design-review.md": {
+    "mtime": 1780723183618.9436,
+    "hash": "09ab62547e2e585a31b05e4e46c49046"
+  },
+  "examples/README.md": {
+    "mtime": 1776589281508.6655,
+    "hash": "0af72959bfd600c4c35c2d61ba3fa5f7"
+  },
+  "examples/code-examples.md": {
+    "mtime": 1770959767862.7686,
+    "hash": "689959836ada3ee51494092467bbc8c8"
+  },
+  "examples/nested/tables-and-lists.md": {
+    "mtime": 1779562479632.0564,
+    "hash": "298642a3ad32aa7f9b9ad07996d49219"
+  },
+  "future_upgrades.md": {
+    "mtime": 1780722578734.6753,
+    "hash": "074e34c3ad63c5c66ab1c729269a9104"
+  },
+  "src/md_preview_server/templates/base.html": {
+    "mtime": 1780722578736.6753,
+    "hash": "e0948f7db8a06b9fc25ac65e1822ff45"
+  },
+  "src/md_preview_server/templates/index.html": {
+    "mtime": 1772270550960.6228,
+    "hash": "2a5fc64aef7135c7225f8ee368a4171d"
+  },
+  "src/md_preview_server/templates/view.html": {
+    "mtime": 1780722807659.3628,
+    "hash": "2c9f57cd6a5314d4409bd9e37deb9550"
+  }
+}
