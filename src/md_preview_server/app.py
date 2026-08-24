@@ -4,6 +4,7 @@ import json
 import os
 import queue
 import threading
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -16,6 +17,12 @@ from .renderer import (
     render_markdown_cached_with_meta,
     render_markdown_with_meta,
 )
+from .storage import (
+    FileRevisionMismatch,
+    atomic_write_text,
+    read_text_stable,
+    revision_from_stat,
+)
 from .watcher import start_watcher, stop_watcher
 
 _subscribers: list[queue.Queue] = []
@@ -24,14 +31,26 @@ _watcher_lock = threading.Lock()
 _current_observer = None
 _file_cache: dict | None = None
 _file_cache_lock = threading.Lock()
+# Monotonic counter bumped on every invalidation. _scan_files captures the
+# value at entry and discards its result if it changes during the scan —
+# guards against a stale rebuild overwriting an invalidation that fired
+# while the scan was running unlocked.
+_scan_generation: int = 0
 
 EXCLUDED_DIRS = {".git", "node_modules", ".venv", "__pycache__", ".tox", ".mypy_cache"}
+
+# Pool used to parallelize per-file content search. Created once at
+# import time; worker threads are daemons and exit with the process.
+_search_executor = ThreadPoolExecutor(max_workers=8, thread_name_prefix="search")
+
+_MAX_CONTENT_SEARCH_RESULTS = 50
 
 
 def invalidate_file_cache() -> None:
     """Clear the cached file tree/list so the next access re-scans."""
-    global _file_cache
+    global _file_cache, _scan_generation
     with _file_cache_lock:
+        _scan_generation += 1
         _file_cache = None
 
 
@@ -103,9 +122,11 @@ def _scan_files(base_dir: Path) -> dict:
     """Scan the directory once and build both tree and file list."""
     global _file_cache
     resolved_base = base_dir.resolve()
+    # Fast path: cache hit under lock, then release.
     with _file_cache_lock:
         if _file_cache is not None and _file_cache["base_dir"] == resolved_base:
             return _file_cache
+        entry_generation = _scan_generation
 
     tree: dict = {}
     files: list[dict] = []
@@ -127,7 +148,17 @@ def _scan_files(base_dir: Path) -> dict:
         })
 
     cache = {"base_dir": resolved_base, "tree": tree, "files": files}
+    # Stale-write guard: if invalidation fired during the scan, drop the
+    # result. The next caller will rebuild from the freshly-invalidated
+    # state. Without this, an unlocked scan could clobber a valid
+    # invalidation and serve stale data until the *next* event.
     with _file_cache_lock:
+        if _scan_generation != entry_generation:
+            return cache  # Discard: caller already gets the right thing via fast-path miss next time.
+        if _file_cache is not None and _file_cache["base_dir"] == resolved_base:
+            # Another thread won the race and published a fresher cache
+            # for the same base_dir; prefer its result.
+            return _file_cache
         _file_cache = cache
     return cache
 
@@ -256,17 +287,15 @@ def create_app(base_dir: Path | None = None) -> Flask:
             return jsonify({"results": [], "truncated": False})
         query_lower = query.lower()
         base = app.config["BASE_DIR"]
-        results = []
-        truncated = False
-        for f in get_file_list(base):
-            if len(results) >= 50:
-                truncated = True
-                break
-            target = validate_path(base, f["path"])
+
+        def search_file(rel_path: str) -> list[dict]:
+            """Search one file for matching lines. Returns [] on read errors."""
+            target = validate_path(base, rel_path)
             try:
                 lines = target.read_text(encoding="utf-8").splitlines()
             except (UnicodeDecodeError, OSError):
-                continue
+                return []
+            matches = []
             for i, line in enumerate(lines):
                 if query_lower in line.lower():
                     start = max(0, i - 1)
@@ -274,14 +303,36 @@ def create_app(base_dir: Path | None = None) -> Flask:
                     snippet = "\n".join(lines[start:end])
                     if len(snippet) > 200:
                         snippet = snippet[:200]
-                    results.append({
-                        "path": f["path"],
+                    matches.append({
+                        "path": rel_path,
                         "line_number": i + 1,
                         "snippet": snippet,
                     })
-                    if len(results) >= 50:
-                        truncated = True
-                        break
+            return matches
+
+        # Submit one task per file; iterate in deterministic (sorted)
+        # path order so results are reproducible across runs.
+        paths = sorted(f["path"] for f in get_file_list(base))
+        futures = {p: _search_executor.submit(search_file, p) for p in paths}
+
+        results: list[dict] = []
+        truncated = False
+        for p in paths:
+            # Once we hit the cap, we still need to drain futures so we
+            # don't leak threads blocked on result() — but we stop
+            # collecting results.
+            batch = futures[p].result()
+            if truncated:
+                continue
+            remaining = _MAX_CONTENT_SEARCH_RESULTS - len(results)
+            if remaining > 0:
+                if len(batch) > remaining:
+                    results.extend(batch[:remaining])
+                    truncated = True
+                else:
+                    results.extend(batch)
+            else:
+                truncated = True
         return jsonify({"results": results, "truncated": truncated})
 
     # --- Phase 2: Upload & create ---
@@ -470,14 +521,21 @@ def create_app(base_dir: Path | None = None) -> Flask:
         if not target.exists() or not target.is_file():
             abort(404)
         try:
-            text = target.read_text(encoding="utf-8")
+            text, file_stat = read_text_stable(target)
         except UnicodeDecodeError:
             abort(400)
-        stat = target.stat()
+        except OSError:
+            return jsonify({
+                "success": False,
+                "error": "File changed while it was being read. Try again.",
+            }), 409
         return jsonify({
             "content": text,
             "path": filepath,
-            "modified": datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc).isoformat(),
+            "modified": datetime.fromtimestamp(
+                file_stat.st_mtime, tz=timezone.utc
+            ).isoformat(),
+            "revision": revision_from_stat(file_stat),
         })
 
     @app.route("/api/save", methods=["PUT"])
@@ -486,36 +544,78 @@ def create_app(base_dir: Path | None = None) -> Flask:
         data = request.get_json(silent=True) or {}
         filepath = data.get("path", "").strip()
         content = data.get("content")
+        revision = data.get("revision")
         last_modified = data.get("last_modified")
 
         if not filepath:
             return jsonify({"success": False, "error": "Path is required"}), 400
         if content is None:
             return jsonify({"success": False, "error": "Content is required"}), 400
+        if not isinstance(content, str):
+            return jsonify({"success": False, "error": "Content must be text"}), 400
 
         target = validate_path(base, filepath)
-        if not target.exists():
+        if not target.exists() or not target.is_file():
             return jsonify({"success": False, "error": "File not found"}), 404
+        if target.suffix.lower() != ".md":
+            return jsonify({"success": False, "error": "Only .md files can be saved"}), 400
 
-        # Conflict detection
-        if last_modified:
-            current_mtime = datetime.fromtimestamp(
-                target.stat().st_mtime, tz=timezone.utc
-            ).isoformat()
-            if current_mtime != last_modified:
+        def conflict_response():
+            try:
+                server_content, server_stat = read_text_stable(target)
+            except OSError:
                 return jsonify({
                     "success": False,
-                    "error": "conflict",
-                    "server_modified": current_mtime,
-                    "server_content": target.read_text(encoding="utf-8"),
+                    "error": "File is changing on disk. Try again.",
                 }), 409
+            return jsonify({
+                "success": False,
+                "error": "conflict",
+                "server_modified": datetime.fromtimestamp(
+                    server_stat.st_mtime, tz=timezone.utc
+                ).isoformat(),
+                "server_revision": revision_from_stat(server_stat),
+                "server_content": server_content,
+            }), 409
 
-        target.write_text(content, encoding="utf-8")
-        stat = target.stat()
+        # Conflict detection
+        try:
+            current_stat = target.stat()
+        except OSError:
+            return jsonify({"success": False, "error": "File not found"}), 404
+        current_revision = revision_from_stat(current_stat)
+        expected_revision = None
+        if revision:
+            if current_revision != revision:
+                return conflict_response()
+            expected_revision = revision
+        elif last_modified:
+            current_mtime = datetime.fromtimestamp(
+                current_stat.st_mtime, tz=timezone.utc
+            ).isoformat()
+            if current_mtime != last_modified:
+                return conflict_response()
+            expected_revision = current_revision
+
+        try:
+            saved_stat = atomic_write_text(
+                target,
+                content,
+                expected_revision=expected_revision,
+            )
+        except FileRevisionMismatch:
+            return conflict_response()
+        except OSError as exc:
+            return jsonify({"success": False, "error": f"Save failed: {exc}"}), 500
+
+        invalidate_file_cache()
         return jsonify({
             "success": True,
             "path": filepath,
-            "modified": datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc).isoformat(),
+            "modified": datetime.fromtimestamp(
+                saved_stat.st_mtime, tz=timezone.utc
+            ).isoformat(),
+            "revision": revision_from_stat(saved_stat),
         })
 
     @app.route("/api/preview", methods=["POST"])
@@ -540,7 +640,16 @@ def create_app(base_dir: Path | None = None) -> Flask:
 
         try:
             import openai
+        except ImportError:
+            return jsonify({
+                "success": False,
+                "error": (
+                    "AI support requires the 'openai' package. "
+                    "Install with: uv sync --extra ai"
+                ),
+            }), 501
 
+        try:
             client = openai.OpenAI(api_key=api_key, base_url=base_url)
             response = client.chat.completions.create(
                 model=model,

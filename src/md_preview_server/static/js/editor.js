@@ -6,6 +6,7 @@
 var _cmView = null;
 var _filePath = "";
 var _lastModified = "";
+var _revision = "";
 var _isDirty = false;
 var _tabs = [];
 var _activeTabId = null;
@@ -82,7 +83,6 @@ function initEditor(filepath) {
             if (!confirm("You have unsaved changes. Discard them?")) return;
         }
         stopAutoSave();
-        _autoSaveConflicts = 0;
         window._editorActive = false;
 
         // Destroy all tab editors
@@ -132,39 +132,86 @@ function initEditor(filepath) {
     });
 
     function doSave() {
-        if (!_cmView) return;
-        var content = _cmView.state.doc.toString();
-        saveSnapshot(_filePath, content, "Manual save");
-        if (statusEl) statusEl.textContent = "Saving...";
+        var tab = _tabs.find(function(t) { return t.id === _activeTabId; });
+        if (!tab || !tab.cmView) return;
+        saveTab(tab, "Manual save", false);
+    }
+
+    function saveTab(tab, snapshotLabel, isAutoSave) {
+        if (!tab || !tab.cmView) return;
+        if (tab.saveInFlight) {
+            if (!isAutoSave) tab.saveQueued = true;
+            return;
+        }
+
+        var content = tab.cmView.state.doc.toString();
+        var savedGeneration = tab.editGeneration;
+        var payload = { path: tab.filePath, content: content };
+        if (tab.revision) payload.revision = tab.revision;
+        else if (tab.lastModified) payload.last_modified = tab.lastModified;
+
+        tab.saveInFlight = true;
+        tab.saveQueued = false;
+        saveSnapshot(tab.filePath, content, snapshotLabel);
+        if (tab.id === _activeTabId && statusEl) statusEl.textContent = isAutoSave ? "Auto-saving..." : "Saving...";
 
         fetch("/api/save", {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ path: _filePath, content: content, last_modified: _lastModified }),
+            body: JSON.stringify(payload),
         })
             .then(function(r) { return r.json(); })
             .then(function(data) {
+                if (!_tabs.includes(tab)) return;
+                tab.saveInFlight = false;
                 if (data.success) {
-                    _lastModified = data.modified;
-                    _isDirty = false;
-                    var activeTab = _tabs.find(function(t) { return t.id === _activeTabId; });
-                    if (activeTab) { activeTab.lastModified = data.modified; activeTab.isDirty = false; }
-                    if (statusEl) statusEl.textContent = "Saved";
-                    if (saveBtn) saveBtn.classList.remove("unsaved");
-                    if (window.showToast) window.showToast("Saved", "success");
+                    tab.lastModified = data.modified;
+                    tab.revision = data.revision;
+                    tab.autoSaveConflicts = 0;
+                    tab.isDirty = tab.editGeneration !== savedGeneration;
+
+                    if (tab.id === _activeTabId) {
+                        _lastModified = tab.lastModified;
+                        _revision = tab.revision;
+                        _isDirty = tab.isDirty;
+                        if (statusEl) statusEl.textContent = tab.isDirty ? "Unsaved changes" : (isAutoSave ? "Auto-saved" : "Saved");
+                        if (saveBtn) saveBtn.classList.toggle("unsaved", tab.isDirty);
+                        if (!isAutoSave && window.showToast) window.showToast("Saved", "success");
+                    }
                     _renderTabBar();
+
+                    var runQueuedSave = tab.saveQueued && tab.isDirty;
+                    tab.saveQueued = false;
+                    if (runQueuedSave) {
+                        saveTab(tab, "Manual save", false);
+                    }
                 } else if (data.error === "conflict") {
-                    if (statusEl) statusEl.textContent = "Conflict!";
-                    if (window.showToast) window.showToast("File modified externally. Your edits are preserved.", "error");
-                    _lastModified = data.server_modified;
+                    tab.saveQueued = false;
+                    if (isAutoSave) tab.autoSaveConflicts++;
+                    if (tab.id === _activeTabId) {
+                        if (statusEl) statusEl.textContent = "Conflict!";
+                        if (window.showToast) window.showToast("File modified externally. Your edits are preserved.", "error");
+                    }
+                    if (isAutoSave && tab.autoSaveConflicts >= 3) {
+                        stopAutoSave();
+                        if (window.showToast) window.showToast("Auto-save paused: file modified externally", "error");
+                    }
                 } else {
-                    if (statusEl) statusEl.textContent = "Error";
-                    if (window.showToast) window.showToast(data.error || "Save failed", "error");
+                    tab.saveQueued = false;
+                    if (tab.id === _activeTabId) {
+                        if (statusEl) statusEl.textContent = "Error";
+                        if (window.showToast) window.showToast(data.error || "Save failed", "error");
+                    }
                 }
             })
             .catch(function() {
-                if (statusEl) statusEl.textContent = "Error";
-                if (window.showToast) window.showToast("Network error", "error");
+                if (!_tabs.includes(tab)) return;
+                tab.saveInFlight = false;
+                tab.saveQueued = false;
+                if (tab.id === _activeTabId) {
+                    if (statusEl) statusEl.textContent = "Error";
+                    if (window.showToast) window.showToast("Network error", "error");
+                }
             });
     }
 
@@ -213,7 +260,6 @@ function initEditor(filepath) {
 
     // --- Auto-save & version history ---
     var _autoSaveTimer = null;
-    var _autoSaveConflicts = 0;
     var AUTOSAVE_INTERVAL = (function() {
         var v = parseInt(localStorage.getItem("mdv-autosave-interval"), 10);
         return isNaN(v) ? 30000 : v;
@@ -235,34 +281,9 @@ function initEditor(filepath) {
         stopAutoSave();
         if (AUTOSAVE_INTERVAL <= 0) return;
         _autoSaveTimer = setInterval(function() {
-            if (!_isDirty || !_cmView || _autoSaveConflicts >= 3) return;
-            var content = _cmView.state.doc.toString();
-            saveSnapshot(_filePath, content, "Auto");
-            fetch("/api/save", {
-                method: "PUT",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ path: _filePath, content: content, last_modified: _lastModified }),
-            })
-                .then(function(r) { return r.json(); })
-                .then(function(data) {
-                    if (data.success) {
-                        _lastModified = data.modified;
-                        _isDirty = false;
-                        var activeTab = _tabs.find(function(t) { return t.id === _activeTabId; });
-                        if (activeTab) { activeTab.lastModified = data.modified; activeTab.isDirty = false; }
-                        if (statusEl) statusEl.textContent = "Auto-saved";
-                        if (saveBtn) saveBtn.classList.remove("unsaved");
-                        _autoSaveConflicts = 0;
-                        _renderTabBar();
-                    } else if (data.error === "conflict") {
-                        _autoSaveConflicts++;
-                        if (_autoSaveConflicts >= 3) {
-                            stopAutoSave();
-                            if (window.showToast) window.showToast("Auto-save paused: file modified externally", "error");
-                        }
-                    }
-                })
-                .catch(function() {});
+            var tab = _tabs.find(function(t) { return t.id === _activeTabId; });
+            if (!tab || !tab.isDirty || !tab.cmView || tab.autoSaveConflicts >= 3) return;
+            saveTab(tab, "Auto", true);
         }, AUTOSAVE_INTERVAL);
     }
 
@@ -423,6 +444,7 @@ function initEditor(filepath) {
         window._activeTabId = id;
         _filePath = tab.filePath;
         _lastModified = tab.lastModified;
+        _revision = tab.revision;
         _isDirty = tab.isDirty;
         _cmView = tab.cmView;
         _tabs.forEach(function(t) {
@@ -458,15 +480,33 @@ function initEditor(filepath) {
         var existing = _tabs.find(function(t) { return t.filePath === filePath; });
         if (existing) { _activateTab(existing.id); return; }
         var tabId = ++_tabIdCounter;
-        var tab = { id: tabId, filePath: filePath, cmView: null, isDirty: false, lastModified: "" };
+        var tab = {
+            id: tabId,
+            filePath: filePath,
+            cmView: null,
+            isDirty: false,
+            lastModified: "",
+            revision: "",
+            editGeneration: 0,
+            saveInFlight: false,
+            saveQueued: false,
+            autoSaveConflicts: 0
+        };
         _tabs.push(tab);
         _renderTabBar();
         _activateTab(tabId);
         fetch("/api/content/" + encodeURI(filePath))
-            .then(function(r) { return r.json(); })
+            .then(function(r) {
+                if (!r.ok) throw new Error("Failed to load document");
+                return r.json();
+            })
             .then(function(data) {
                 tab.lastModified = data.modified;
-                if (_activeTabId === tabId) _lastModified = data.modified;
+                tab.revision = data.revision;
+                if (_activeTabId === tabId) {
+                    _lastModified = data.modified;
+                    _revision = data.revision;
+                }
                 saveSnapshot(filePath, data.content, "Before edit");
                 _loadTabEditor(tab, data.content);
                 if (_activeTabId === tabId) startAutoSave();
@@ -581,6 +621,7 @@ function initEditor(filepath) {
     window._tabDirty = function(tabId) {
         var tab = _tabs.find(function(t) { return t.id === tabId; });
         if (!tab) return;
+        tab.editGeneration++;
         tab.isDirty = true;
         if (tabId === _activeTabId) {
             _isDirty = true;

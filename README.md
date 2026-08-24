@@ -54,6 +54,16 @@ To also install the development extras (e.g. pytest):
 uv sync --extra dev
 ```
 
+### Including AI assistant support
+
+The AI assistant panel is optional. To enable it, install the `ai` extra:
+
+```bash
+uv sync --extra ai
+```
+
+Without it, the `/api/ai/ask` endpoint returns a 501 with an install hint.
+
 ## Usage
 
 Navigate to any directory containing markdown files and run:
