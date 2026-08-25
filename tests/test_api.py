@@ -1,10 +1,12 @@
 """Tests for the API endpoints (Phases 1-4)."""
 
 import json
+from concurrent.futures import Future
 from pathlib import Path
 
 import pytest
 
+import md_preview_server.app as app_module
 from md_preview_server.app import create_app
 
 
@@ -49,6 +51,80 @@ def test_api_files_metadata(client):
     assert "size" in f
     assert "modified" in f
     assert f["size"] > 0
+
+
+def test_api_files_uses_one_shared_snapshot(client, sample_dir, monkeypatch):
+    calls = []
+    snapshot = {
+        "base_dir": sample_dir,
+        "tree": {"only.md": "only.md"},
+        "files": [{
+            "path": "only.md",
+            "name": "only.md",
+            "size": 7,
+            "modified": "2026-08-24T00:00:00+00:00",
+        }],
+    }
+
+    def fake_scan(base_dir):
+        calls.append(base_dir)
+        return snapshot
+
+    monkeypatch.setattr(app_module, "_scan_files", fake_scan)
+
+    response = client.get("/api/files")
+
+    assert response.status_code == 200
+    assert len(calls) == 1
+    assert response.get_json()["tree"] == snapshot["tree"]
+    assert response.get_json()["files"] == snapshot["files"]
+
+
+def test_scan_files_retries_if_invalidated_mid_scan(tmp_path, monkeypatch):
+    first = tmp_path / "first.md"
+    second = tmp_path / "second.md"
+    first.write_text("first", encoding="utf-8")
+    scan_count = 0
+
+    def racing_scan(base_dir):
+        nonlocal scan_count
+        scan_count += 1
+        if scan_count == 1:
+            yield first
+            second.write_text("second", encoding="utf-8")
+            app_module.invalidate_file_cache()
+            return
+        yield from sorted(base_dir.glob("*.md"))
+
+    monkeypatch.setattr(app_module, "_iter_markdown_files", racing_scan)
+    app_module.invalidate_file_cache()
+
+    snapshot = app_module._scan_files(tmp_path)
+
+    assert scan_count == 2
+    assert set(snapshot["tree"]) == {"first.md", "second.md"}
+    assert {item["path"] for item in snapshot["files"]} == {
+        "first.md",
+        "second.md",
+    }
+
+
+def test_scan_files_skips_file_that_disappears_before_stat(tmp_path, monkeypatch):
+    stable = tmp_path / "stable.md"
+    vanished = tmp_path / "vanished.md"
+    stable.write_text("stable", encoding="utf-8")
+
+    monkeypatch.setattr(
+        app_module,
+        "_iter_markdown_files",
+        lambda _base_dir: iter((stable, vanished)),
+    )
+    app_module.invalidate_file_cache()
+
+    snapshot = app_module._scan_files(tmp_path)
+
+    assert snapshot["tree"] == {"stable.md": "stable.md"}
+    assert [item["path"] for item in snapshot["files"]] == ["stable.md"]
 
 
 def test_api_search_found(client):
@@ -325,3 +401,44 @@ def test_api_search_content_truncates_at_50(tmp_path):
         data = response.get_json()
         assert len(data["results"]) == 50
         assert data["truncated"] is True
+
+
+def test_api_search_content_bounds_submitted_work(tmp_path, monkeypatch):
+    matching = "\n".join(f"line {i} keyword" for i in range(60))
+    (tmp_path / "00-first.md").write_text(matching, encoding="utf-8")
+    for i in range(20):
+        (tmp_path / f"{i + 1:02d}-later.md").write_text(
+            "no match",
+            encoding="utf-8",
+        )
+
+    class RecordingExecutor:
+        def __init__(self):
+            self.calls = []
+
+        def submit(self, function, *args):
+            self.calls.append((function, args))
+            future = Future()
+            try:
+                future.set_result(function(*args))
+            except BaseException as exc:
+                future.set_exception(exc)
+            return future
+
+    executor = RecordingExecutor()
+    monkeypatch.setattr(app_module, "_search_executor", executor)
+    app_module.invalidate_file_cache()
+    app = create_app(base_dir=tmp_path)
+    app.config["TESTING"] = True
+
+    with app.test_client() as test_client:
+        response = test_client.get("/api/search/content?q=keyword")
+
+    data = response.get_json()
+    assert len(data["results"]) == 50
+    assert data["truncated"] is True
+    assert len(executor.calls) == app_module._MAX_CONTENT_SEARCH_WORKERS
+    assert all(
+        args[-1] == app_module._MAX_CONTENT_SEARCH_RESULTS + 1
+        for _function, args in executor.calls
+    )

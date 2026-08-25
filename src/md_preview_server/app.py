@@ -4,6 +4,7 @@ import json
 import os
 import queue
 import threading
+from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
@@ -32,18 +33,21 @@ _current_observer = None
 _file_cache: dict | None = None
 _file_cache_lock = threading.Lock()
 # Monotonic counter bumped on every invalidation. _scan_files captures the
-# value at entry and discards its result if it changes during the scan —
-# guards against a stale rebuild overwriting an invalidation that fired
-# while the scan was running unlocked.
+# value at entry and retries if it changes during the scan, preventing a
+# request from receiving or publishing an invalidated snapshot.
 _scan_generation: int = 0
 
 EXCLUDED_DIRS = {".git", "node_modules", ".venv", "__pycache__", ".tox", ".mypy_cache"}
 
+_MAX_CONTENT_SEARCH_WORKERS = 8
+_MAX_CONTENT_SEARCH_RESULTS = 50
+
 # Pool used to parallelize per-file content search. Created once at
 # import time; worker threads are daemons and exit with the process.
-_search_executor = ThreadPoolExecutor(max_workers=8, thread_name_prefix="search")
-
-_MAX_CONTENT_SEARCH_RESULTS = 50
+_search_executor = ThreadPoolExecutor(
+    max_workers=_MAX_CONTENT_SEARCH_WORKERS,
+    thread_name_prefix="search",
+)
 
 
 def invalidate_file_cache() -> None:
@@ -122,45 +126,50 @@ def _scan_files(base_dir: Path) -> dict:
     """Scan the directory once and build both tree and file list."""
     global _file_cache
     resolved_base = base_dir.resolve()
-    # Fast path: cache hit under lock, then release.
-    with _file_cache_lock:
-        if _file_cache is not None and _file_cache["base_dir"] == resolved_base:
-            return _file_cache
-        entry_generation = _scan_generation
+    while True:
+        # Fast path: cache hit under lock, then release while scanning.
+        with _file_cache_lock:
+            if _file_cache is not None and _file_cache["base_dir"] == resolved_base:
+                return _file_cache
+            entry_generation = _scan_generation
 
-    tree: dict = {}
-    files: list[dict] = []
-    for md_file in _iter_markdown_files(resolved_base):
-        rel = md_file.relative_to(resolved_base)
-        parts = rel.parts
-        # Build tree
-        node = tree
-        for part in parts[:-1]:
-            node = node.setdefault(part, {})
-        node[parts[-1]] = rel.as_posix()
-        # Build file list
-        stat = md_file.stat()
-        files.append({
-            "path": rel.as_posix(),
-            "name": md_file.name,
-            "size": stat.st_size,
-            "modified": datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc).isoformat(),
-        })
+        tree: dict = {}
+        files: list[dict] = []
+        for md_file in _iter_markdown_files(resolved_base):
+            try:
+                rel = md_file.relative_to(resolved_base)
+                stat = md_file.stat()
+            except (OSError, ValueError):
+                # Files can disappear or be replaced between scandir and stat.
+                # Exclude them from both views of this snapshot.
+                continue
 
-    cache = {"base_dir": resolved_base, "tree": tree, "files": files}
-    # Stale-write guard: if invalidation fired during the scan, drop the
-    # result. The next caller will rebuild from the freshly-invalidated
-    # state. Without this, an unlocked scan could clobber a valid
-    # invalidation and serve stale data until the *next* event.
-    with _file_cache_lock:
-        if _scan_generation != entry_generation:
-            return cache  # Discard: caller already gets the right thing via fast-path miss next time.
-        if _file_cache is not None and _file_cache["base_dir"] == resolved_base:
-            # Another thread won the race and published a fresher cache
-            # for the same base_dir; prefer its result.
-            return _file_cache
-        _file_cache = cache
-    return cache
+            parts = rel.parts
+            node = tree
+            for part in parts[:-1]:
+                node = node.setdefault(part, {})
+            node[parts[-1]] = rel.as_posix()
+            files.append({
+                "path": rel.as_posix(),
+                "name": md_file.name,
+                "size": stat.st_size,
+                "modified": datetime.fromtimestamp(
+                    stat.st_mtime, tz=timezone.utc
+                ).isoformat(),
+            })
+
+        cache = {"base_dir": resolved_base, "tree": tree, "files": files}
+        with _file_cache_lock:
+            if _file_cache is not None and _file_cache["base_dir"] == resolved_base:
+                # Another thread published a snapshot while this scan ran.
+                return _file_cache
+            if _scan_generation != entry_generation:
+                # This result was invalidated while it was being built. Retry
+                # so this request also receives a current, internally
+                # consistent snapshot.
+                continue
+            _file_cache = cache
+            return cache
 
 
 def build_file_tree(base_dir: Path) -> dict:
@@ -171,6 +180,38 @@ def build_file_tree(base_dir: Path) -> dict:
 def get_file_list(base_dir: Path) -> list[dict]:
     """Get a flat list of .md files with metadata."""
     return _scan_files(base_dir)["files"]
+
+
+def _search_markdown_file(
+    base_dir: Path,
+    rel_path: str,
+    query_lower: str,
+    result_limit: int,
+) -> list[dict]:
+    """Return at most result_limit matching lines from one Markdown file."""
+    target = validate_path(base_dir, rel_path)
+    try:
+        lines = target.read_text(encoding="utf-8").splitlines()
+    except (UnicodeDecodeError, OSError):
+        return []
+
+    matches = []
+    for i, line in enumerate(lines):
+        if query_lower not in line.lower():
+            continue
+        start = max(0, i - 1)
+        end = min(len(lines), i + 2)
+        snippet = "\n".join(lines[start:end])
+        if len(snippet) > 200:
+            snippet = snippet[:200]
+        matches.append({
+            "path": rel_path,
+            "line_number": i + 1,
+            "snippet": snippet,
+        })
+        if len(matches) >= result_limit:
+            break
+    return matches
 
 
 def create_app(base_dir: Path | None = None) -> Flask:
@@ -262,9 +303,10 @@ def create_app(base_dir: Path | None = None) -> Flask:
     @app.route("/api/files")
     def api_files():
         base = app.config["BASE_DIR"]
+        snapshot = _scan_files(base)
         return jsonify({
-            "tree": build_file_tree(base),
-            "files": get_file_list(base),
+            "tree": snapshot["tree"],
+            "files": snapshot["files"],
             "base_dir": str(base),
         })
 
@@ -288,51 +330,57 @@ def create_app(base_dir: Path | None = None) -> Flask:
         query_lower = query.lower()
         base = app.config["BASE_DIR"]
 
-        def search_file(rel_path: str) -> list[dict]:
-            """Search one file for matching lines. Returns [] on read errors."""
-            target = validate_path(base, rel_path)
-            try:
-                lines = target.read_text(encoding="utf-8").splitlines()
-            except (UnicodeDecodeError, OSError):
-                return []
-            matches = []
-            for i, line in enumerate(lines):
-                if query_lower in line.lower():
-                    start = max(0, i - 1)
-                    end = min(len(lines), i + 2)
-                    snippet = "\n".join(lines[start:end])
-                    if len(snippet) > 200:
-                        snippet = snippet[:200]
-                    matches.append({
-                        "path": rel_path,
-                        "line_number": i + 1,
-                        "snippet": snippet,
-                    })
-            return matches
-
-        # Submit one task per file; iterate in deterministic (sorted)
-        # path order so results are reproducible across runs.
+        # Keep only a small ordered window of work in flight. Results remain
+        # deterministic by sorted path, but a capped response no longer queues
+        # or drains the entire workspace.
         paths = sorted(f["path"] for f in get_file_list(base))
-        futures = {p: _search_executor.submit(search_file, p) for p in paths}
-
         results: list[dict] = []
         truncated = False
-        for p in paths:
-            # Once we hit the cap, we still need to drain futures so we
-            # don't leak threads blocked on result() — but we stop
-            # collecting results.
-            batch = futures[p].result()
-            if truncated:
-                continue
+        in_flight = deque()
+        next_path = 0
+
+        while next_path < min(len(paths), _MAX_CONTENT_SEARCH_WORKERS):
+            path = paths[next_path]
+            future = _search_executor.submit(
+                _search_markdown_file,
+                base,
+                path,
+                query_lower,
+                _MAX_CONTENT_SEARCH_RESULTS + 1,
+            )
+            in_flight.append((path, future))
+            next_path += 1
+
+        while in_flight:
+            _path, future = in_flight.popleft()
+            batch = future.result()
             remaining = _MAX_CONTENT_SEARCH_RESULTS - len(results)
-            if remaining > 0:
-                if len(batch) > remaining:
-                    results.extend(batch[:remaining])
-                    truncated = True
-                else:
-                    results.extend(batch)
-            else:
+            results.extend(batch[:remaining])
+
+            if len(batch) > remaining:
                 truncated = True
+                break
+            if len(results) == _MAX_CONTENT_SEARCH_RESULTS:
+                # More queued or unsubmitted files mean the search stopped
+                # early even if the current file contained exactly the last
+                # result included in the response.
+                truncated = bool(in_flight) or next_path < len(paths)
+                break
+
+            if next_path < len(paths):
+                path = paths[next_path]
+                next_future = _search_executor.submit(
+                    _search_markdown_file,
+                    base,
+                    path,
+                    query_lower,
+                    _MAX_CONTENT_SEARCH_RESULTS + 1,
+                )
+                in_flight.append((path, next_future))
+                next_path += 1
+
+        for _path, future in in_flight:
+            future.cancel()
         return jsonify({"results": results, "truncated": truncated})
 
     # --- Phase 2: Upload & create ---
