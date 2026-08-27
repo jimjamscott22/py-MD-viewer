@@ -137,6 +137,42 @@ function initEditor(filepath) {
         saveTab(tab, "Manual save", false);
     }
 
+    function showExternalChange(tab) {
+        if (!tab || tab.id !== _activeTabId) return;
+        if (statusEl) statusEl.textContent = "Changed on disk";
+        if (window.showToast) {
+            window.showToast("File changed on disk. Save your work or reload.", "info");
+        }
+    }
+
+    function resolvePendingFileEvent(tab, savedRevision, saveSucceeded) {
+        if (!tab.pendingFileEvent) return false;
+        var pendingRevision = tab.pendingFileRevision;
+        tab.pendingFileEvent = false;
+        tab.pendingFileRevision = null;
+        if (saveSucceeded && pendingRevision && pendingRevision === savedRevision) {
+            return false;
+        }
+        showExternalChange(tab);
+        return true;
+    }
+
+    function handleFileModified(path, revision) {
+        var tab = _tabs.find(function(t) { return t.id === _activeTabId; });
+        var normalizedPath = (path || "").replace(/\\/g, "/");
+        if (!tab || tab.filePath.replace(/\\/g, "/") !== normalizedPath) {
+            return false;
+        }
+        if (tab.saveInFlight) {
+            tab.pendingFileEvent = true;
+            tab.pendingFileRevision = revision || null;
+            return true;
+        }
+        if (revision && revision === tab.revision) return true;
+        showExternalChange(tab);
+        return true;
+    }
+
     function saveTab(tab, snapshotLabel, isAutoSave) {
         if (!tab || !tab.cmView) return;
         if (tab.saveInFlight) {
@@ -179,6 +215,7 @@ function initEditor(filepath) {
                         if (!isAutoSave && window.showToast) window.showToast("Saved", "success");
                     }
                     _renderTabBar();
+                    resolvePendingFileEvent(tab, data.revision, true);
 
                     var runQueuedSave = tab.saveQueued && tab.isDirty;
                     tab.saveQueued = false;
@@ -188,9 +225,10 @@ function initEditor(filepath) {
                 } else if (data.error === "conflict") {
                     tab.saveQueued = false;
                     if (isAutoSave) tab.autoSaveConflicts++;
+                    var pendingEventWarned = resolvePendingFileEvent(tab, null, false);
                     if (tab.id === _activeTabId) {
                         if (statusEl) statusEl.textContent = "Conflict!";
-                        if (window.showToast) window.showToast("File modified externally. Your edits are preserved.", "error");
+                        if (!pendingEventWarned && window.showToast) window.showToast("File modified externally. Your edits are preserved.", "error");
                     }
                     if (isAutoSave && tab.autoSaveConflicts >= 3) {
                         stopAutoSave();
@@ -198,6 +236,7 @@ function initEditor(filepath) {
                     }
                 } else {
                     tab.saveQueued = false;
+                    resolvePendingFileEvent(tab, null, false);
                     if (tab.id === _activeTabId) {
                         if (statusEl) statusEl.textContent = "Error";
                         if (window.showToast) window.showToast(data.error || "Save failed", "error");
@@ -208,6 +247,7 @@ function initEditor(filepath) {
                 if (!_tabs.includes(tab)) return;
                 tab.saveInFlight = false;
                 tab.saveQueued = false;
+                resolvePendingFileEvent(tab, null, false);
                 if (tab.id === _activeTabId) {
                     if (statusEl) statusEl.textContent = "Error";
                     if (window.showToast) window.showToast("Network error", "error");
@@ -490,7 +530,9 @@ function initEditor(filepath) {
             editGeneration: 0,
             saveInFlight: false,
             saveQueued: false,
-            autoSaveConflicts: 0
+            autoSaveConflicts: 0,
+            pendingFileEvent: false,
+            pendingFileRevision: null
         };
         _tabs.push(tab);
         _renderTabBar();
@@ -644,6 +686,25 @@ function initEditor(filepath) {
 
     // Keep _cmView in sync so module scripts can write to it
     window._setCmView = function(v) { _cmView = v; };
+
+    window.mdEditor = {
+        isActive: function() {
+            return Boolean(window._editorActive && _activeTabId !== null);
+        },
+        getActivePath: function() {
+            var tab = _tabs.find(function(t) { return t.id === _activeTabId; });
+            return tab ? tab.filePath : "";
+        },
+        getActiveContent: function() {
+            var tab = _tabs.find(function(t) { return t.id === _activeTabId; });
+            return tab && tab.cmView ? tab.cmView.state.doc.toString() : "";
+        },
+        getActiveRevision: function() {
+            var tab = _tabs.find(function(t) { return t.id === _activeTabId; });
+            return tab ? tab.revision : "";
+        },
+        handleFileModified: handleFileModified
+    };
 
     // Split divider drag
     initSplitDivider();

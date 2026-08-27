@@ -11,15 +11,19 @@ function initLiveReload(currentFile) {
     window._onSSEMessage = function (data) {
         var changedFile = (data.file || "").replace(/\\/g, "/");
 
-        // If in edit mode, don't auto-reload — notify instead
-        if (window._editorActive && changedFile === normalizedCurrent) {
-            if (window.showToast) {
-                window.showToast("File changed on disk. Save your work or reload.", "info");
+        if (data.type !== "file_modified") return;
+
+        var editor = window.mdEditor;
+        if (editor && editor.isActive()) {
+            var activePath = (editor.getActivePath() || "").replace(/\\/g, "/");
+            if (changedFile === activePath) {
+                editor.handleFileModified(changedFile, data.revision || null);
             }
+            // Never reload the page underneath an active editing session.
             return;
         }
 
-        if (data.type === "file_modified" && changedFile === normalizedCurrent) {
+        if (changedFile === normalizedCurrent) {
             location.reload();
         }
     };

@@ -58,10 +58,17 @@ def invalidate_file_cache() -> None:
         _file_cache = None
 
 
-def notify_clients(changed_path: str, event_type: str = "file_modified") -> None:
+def notify_clients(
+    changed_path: str,
+    event_type: str = "file_modified",
+    revision: str | None = None,
+) -> None:
     """Push a change event to all SSE subscribers."""
     invalidate_file_cache()
-    message = json.dumps({"type": event_type, "file": changed_path})
+    payload = {"type": event_type, "file": changed_path}
+    if revision is not None:
+        payload["revision"] = revision
+    message = json.dumps(payload)
     with _subscribers_lock:
         for q in _subscribers:
             try:
@@ -277,6 +284,7 @@ def create_app(base_dir: Path | None = None) -> Flask:
             with _subscribers_lock:
                 _subscribers.append(q)
             try:
+                yield ": connected\n\n"
                 while True:
                     try:
                         message = q.get(timeout=30)
