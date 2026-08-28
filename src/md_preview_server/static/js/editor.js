@@ -315,21 +315,36 @@ function initEditor(filepath) {
 
     // --- Auto-save & version history ---
     var _autoSaveTimer = null;
+    var HISTORY_MAX_BYTES = 200 * 1024;
+    var HISTORY_KEY_PREFIX = "mdv-history-v2-";
+    var _historyNoticeShown = { oversized: false, storage: false };
     var AUTOSAVE_INTERVAL = (function() {
         var v = parseInt(localStorage.getItem("mdv-autosave-interval"), 10);
         return isNaN(v) ? 30000 : v;
     })();
 
-    function _historyKey(path) { return "mdv-history-" + encodeURIComponent(path); }
+    function _historyKey(path) { return HISTORY_KEY_PREFIX + encodeURIComponent(path); }
+
+    function showHistoryNotice(kind, message) {
+        if (_historyNoticeShown[kind]) return;
+        _historyNoticeShown[kind] = true;
+        if (window.showToast) window.showToast(message, "info");
+    }
 
     function saveSnapshot(path, content, label) {
+        if (new TextEncoder().encode(content).length > HISTORY_MAX_BYTES) {
+            showHistoryNotice("oversized", "History snapshot skipped because this document is larger than 200 KiB.");
+            return;
+        }
         try {
             var key = _historyKey(path);
             var snapshots = JSON.parse(localStorage.getItem(key) || "[]");
-            snapshots.unshift({ content: content.slice(0, 51200), timestamp: Date.now(), label: label || "Auto" });
+            snapshots.unshift({ content: content, timestamp: Date.now(), label: label || "Auto" });
             if (snapshots.length > 10) snapshots = snapshots.slice(0, 10);
             localStorage.setItem(key, JSON.stringify(snapshots));
-        } catch(e) {}
+        } catch(e) {
+            showHistoryNotice("storage", "Local history is unavailable for this editing session.");
+        }
     }
 
     function startAutoSave() {
