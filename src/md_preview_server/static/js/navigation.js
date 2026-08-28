@@ -119,6 +119,17 @@
         var modeLabelEl = modeToggleBtn ? modeToggleBtn.querySelector(".search-mode-label") : null;
         var currentRequestId = 0;
 
+        function resetSearch() {
+            currentRequestId += 1;
+            if (!sidebarTree || !searchResults) {
+                return;
+            }
+
+            sidebarTree.style.display = "";
+            searchResults.style.display = "none";
+            searchResults.innerHTML = "";
+        }
+
         function setSearchMode(mode) {
             searchMode = mode;
             var isContent = mode === "content";
@@ -239,16 +250,6 @@
         }
 
         searchResults.innerHTML = html;
-    }
-
-    function resetSearch() {
-        if (!sidebarTree || !searchResults) {
-            return;
-        }
-
-        sidebarTree.style.display = "";
-        searchResults.style.display = "none";
-        searchResults.innerHTML = "";
     }
 
     function initTreeControls() {
