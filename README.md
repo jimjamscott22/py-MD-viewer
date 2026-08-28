@@ -78,6 +78,12 @@ Then open <http://localhost:8000> in your browser.
 
 The server watches for changes to `.md` files and automatically refreshes the browser when you save edits.
 
+### Standalone Windows executable
+
+Run `build-exe.bat` from the project root to create `dist\md-viewer.exe`. The executable includes the OpenAI client used by the AI assistant for OpenAI-compatible local or remote endpoints.
+
+Runtime AI configuration still comes from the `OPENAI_API_KEY`, `LLM_BASE_URL`, and `LLM_MODEL` environment variables.
+
 ## Package Management
 
 All package operations go through `uv` rather than `pip` directly.

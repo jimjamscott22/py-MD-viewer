@@ -10,10 +10,10 @@ REM ============================================================
 
 cd /d "%~dp0"
 
-REM Add pyinstaller to the project's dev deps in an isolated run.
+REM Include the AI extra and PyInstaller in an isolated build environment.
 echo Building... this can take a minute on the first run.
 
-uv run --with pyinstaller pyinstaller ^
+uv run --extra ai --with pyinstaller pyinstaller ^
   --name md-viewer ^
   --onefile ^
   --paths src ^
