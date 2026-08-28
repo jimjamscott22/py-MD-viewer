@@ -105,6 +105,8 @@
 **Files:**
 
 - Modify: `src/md_preview_server/static/js/ai-assistant.js:7-70`
+- Modify: `src/md_preview_server/static/js/editor.js:43-110`
+- Modify: `src/md_preview_server/static/css/style.css:1009-1025`
 - Modify: `src/md_preview_server/templates/view.html:251`
 
 **Interfaces:**
@@ -135,37 +137,43 @@
 
   If `window.mdEditor` is absent or reports inactive, retain the current server-content lookup. If active editor access returns an empty path, show the existing “No document is currently open” message and do not send an AI request.
 
-- [ ] **Step 3: Bust the AI asset cache**
+- [ ] **Step 3: Keep the Assistant available during editing**
 
-  Change the template include to:
+  When entering edit mode, keep `#doc-shell` visible, move `#editor-container` into the shell's main grid column, hide only `.doc-main`, and leave `#doc-sidebar-panel` interactive. Restore `.doc-main` when exiting edit mode. Add a narrow `.editor-mode` layout class so the editor can shrink inside the grid without overflowing.
+
+- [ ] **Step 4: Bust the changed asset caches**
+
+  Change the template includes to:
 
   ```html
+  <script src="{{ url_for('static', filename='js/editor.js') }}?v=7"></script>
   <script src="{{ url_for('static', filename='js/ai-assistant.js') }}?v=2"></script>
   ```
 
-- [ ] **Step 4: Run static and backend checks**
+- [ ] **Step 5: Run static and backend checks**
 
   ```powershell
   node --check src/md_preview_server/static/js/ai-assistant.js
+  node --check src/md_preview_server/static/js/editor.js
   $env:UV_CACHE_DIR = '.cache\uv'
   uv run pytest tests/test_app.py tests/test_editor.py -q
   git diff --check
   ```
 
-- [ ] **Step 5: Verify active-tab behavior in a browser**
+- [ ] **Step 6: Verify active-tab behavior in a browser**
 
   Intercept `/api/ai/ask` or point it at a controlled local endpoint, then:
 
   1. Open document A and document B as editor tabs.
   2. Add distinct unsaved text to both tabs.
-  3. Submit from document B and confirm the request contains B's path/content.
+  3. Confirm the Assistant sidebar remains visible in edit mode, then submit from document B and confirm the request contains B's path/content.
   4. Switch to A, submit again, and confirm the request contains A's path/content.
   5. Exit edit mode and confirm view mode obtains context from `/api/content`.
   6. Confirm the browser console has no errors.
 
-- [ ] **Step 6: Review and commit this task**
+- [ ] **Step 7: Review and commit this task**
 
-  Stage only `ai-assistant.js` and `view.html` after user approval.
+  Stage the four Task 2 source files and this amended plan after user approval.
 
   Suggested commit: `fix: use active editor content for AI context`
 
@@ -221,7 +229,7 @@
 
 - [ ] **Step 4: Bump the editor asset version**
 
-  Change `editor.js?v=6` to `editor.js?v=7` in `view.html`.
+  Change `editor.js?v=7` to `editor.js?v=8` in `view.html`.
 
 - [ ] **Step 5: Run static and backend regression checks**
 
@@ -366,7 +374,7 @@
 
 - [ ] **Step 5: Bump the editor asset version**
 
-  Increment the editor query version from `v=7` to `v=8` after Task 3 has landed. If Task 3 has not landed, increment the current version once and record the actual value in the commit.
+  Increment the editor query version from `v=8` to `v=9` after Task 3 has landed. If Task 3 has not landed, increment the current version once and record the actual value in the commit.
 
 - [ ] **Step 6: Run static and backend regression checks**
 

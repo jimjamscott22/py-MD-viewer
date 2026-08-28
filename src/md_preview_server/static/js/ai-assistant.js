@@ -18,24 +18,24 @@ document.addEventListener("DOMContentLoaded", () => {
         const promptText = aiInput.value.trim();
         if (!promptText) return;
 
-        // 1. Get the current document path
-        const filepath = docPathEl ? docPathEl.textContent.trim() : "";
+        // Use the active editor tab's in-memory content, including unsaved edits.
+        // Outside edit mode, fall back to the current document's saved content.
+        let filepath = docPathEl ? docPathEl.textContent.trim() : "";
+        let documentContent = "";
+        const editor = window.mdEditor;
+        const editorActive = editor && editor.isActive();
+
+        if (editorActive) {
+            filepath = editor.getActivePath();
+            documentContent = editor.getActiveContent();
+        }
+
         if (!filepath) {
             appendMessage("assistant", "Error: No document is currently open.");
             return;
         }
 
-        // 2. Fetch the document content (from editor if active, otherwise fetch from server again, or read from live-preview)
-        // Since the server reads from the file based on the path, we can either pass the filepath and have the server read it,
-        // or we can pass the content. Let's fetch the latest content from the API if it's not currently being edited,
-        // or if it is being edited we get from editor window.
-        let documentContent = "";
-        
-        // Check if CodeMirror is active
-        if (window._cmEditor && document.getElementById("editor-container").style.display !== "none") {
-            documentContent = window._cmEditor.state.doc.toString();
-        } else {
-            // Fetch content from API
+        if (!editorActive) {
             try {
                 const res = await fetch(`/api/content/${filepath}`);
                 if (res.ok) {
@@ -49,7 +49,7 @@ document.addEventListener("DOMContentLoaded", () => {
             }
         }
 
-        // 3. Display user prompt in chat
+        // Display user prompt in chat
         appendMessage("user", promptText);
         aiInput.value = "";
         aiSubmitBtn.disabled = true;
@@ -58,7 +58,7 @@ document.addEventListener("DOMContentLoaded", () => {
         const loadingId = appendLoading();
 
         try {
-            // 4. Send request to backend
+            // Send request to backend
             const response = await fetch("/api/ai/ask", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },

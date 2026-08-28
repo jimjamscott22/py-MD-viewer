@@ -1017,6 +1017,14 @@ mark {
     margin: 0 auto;
 }
 
+.doc-shell.editor-mode {
+    align-items: stretch;
+}
+
+.doc-shell.editor-mode .editor-container {
+    min-width: 0;
+}
+
 .doc-main {
     display: flex;
     flex-direction: column;
