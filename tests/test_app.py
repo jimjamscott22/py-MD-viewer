@@ -40,6 +40,15 @@ def test_index_lists_files(client):
     assert "hello.md" in data
 
 
+def test_index_file_tree_renders_once(client):
+    response = client.get("/")
+    data = response.data.decode("utf-8")
+    assert data.count('id="file-library"') == 0
+    # sample_dir has hello.md at root plus one nested "sub" folder,
+    # so a single render produces two <ul class="file-tree"> (root + nested).
+    assert data.count('class="file-tree"') == 2
+
+
 def test_view_file_returns_200(client):
     response = client.get("/view/hello.md")
     assert response.status_code == 200

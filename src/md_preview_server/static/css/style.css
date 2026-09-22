@@ -257,22 +257,6 @@ pre {
     opacity: 0.6;
 }
 
-.section-heading {
-    display: flex;
-    align-items: flex-end;
-    justify-content: space-between;
-    gap: 16px;
-    margin-bottom: 20px;
-}
-
-.section-heading h2 {
-    font-family: var(--font-display);
-    font-size: 1.4rem;
-    line-height: 1.15;
-    color: var(--color-accent);
-    text-shadow: var(--glow-sm);
-}
-
 .section-copy {
     max-width: 360px;
     color: var(--color-text-secondary);
@@ -1431,10 +1415,6 @@ mark {
     flex-wrap: wrap;
 }
 
-.file-list-main {
-    padding: 24px 28px;
-}
-
 .empty-state {
     padding: 40px 32px;
     text-align: center;
@@ -2189,7 +2169,6 @@ mark {
 :root[data-low-effects="true"] a:hover,
 :root[data-low-effects="true"] .sidebar-header .logo,
 :root[data-low-effects="true"] .sidebar-header .logo:hover,
-:root[data-low-effects="true"] .section-heading h2,
 :root[data-low-effects="true"] .doc-title,
 :root[data-low-effects="true"] .markdown-body h1,
 :root[data-low-effects="true"] .markdown-body h2,
