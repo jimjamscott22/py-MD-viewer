@@ -23,6 +23,7 @@
     initSidebarAutoClose();
     initDocumentTools();
     initExportButtons();
+    initExportMenu();
 
     function initTheme() {
         var savedTheme = localStorage.getItem(storageKey);
@@ -536,6 +537,36 @@
         var div = document.createElement("div");
         div.textContent = text;
         return div.innerHTML;
+    }
+
+    function initExportMenu() {
+        var menuBtn = document.getElementById("export-menu-btn");
+        var menu = document.getElementById("export-menu");
+
+        if (!menuBtn || !menu) {
+            return;
+        }
+
+        menuBtn.addEventListener("click", function (e) {
+            e.stopPropagation();
+            var isHidden = menu.style.display === "none" || menu.style.display === "";
+            menu.style.display = isHidden ? "block" : "none";
+            menuBtn.setAttribute("aria-expanded", isHidden ? "true" : "false");
+        });
+
+        document.addEventListener("click", function (e) {
+            if (!menu.contains(e.target) && e.target !== menuBtn) {
+                menu.style.display = "none";
+                menuBtn.setAttribute("aria-expanded", "false");
+            }
+        });
+
+        menu.querySelectorAll(".export-menu-item").forEach(function (item) {
+            item.addEventListener("click", function () {
+                menu.style.display = "none";
+                menuBtn.setAttribute("aria-expanded", "false");
+            });
+        });
     }
 
     function initExportButtons() {

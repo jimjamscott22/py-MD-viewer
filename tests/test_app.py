@@ -40,6 +40,15 @@ def test_index_lists_files(client):
     assert "hello.md" in data
 
 
+def test_index_file_tree_renders_once(client):
+    response = client.get("/")
+    data = response.data.decode("utf-8")
+    assert data.count('id="file-library"') == 0
+    # sample_dir has hello.md at root plus one nested "sub" folder,
+    # so a single render produces two <ul class="file-tree"> (root + nested).
+    assert data.count('class="file-tree"') == 2
+
+
 def test_view_file_returns_200(client):
     response = client.get("/view/hello.md")
     assert response.status_code == 200
@@ -57,6 +66,32 @@ def test_view_nested_file(client):
     assert response.status_code == 200
     data = response.data.decode("utf-8")
     assert "Nested" in data
+
+
+def test_view_file_no_duplicate_path(client):
+    response = client.get("/view/sub/nested.md")
+    data = response.data.decode("utf-8")
+    assert 'class="doc-path"' not in data
+    assert 'class="doc-title"' in data
+    assert 'class="breadcrumb"' in data
+
+
+def test_view_file_export_dropdown(client):
+    response = client.get("/view/hello.md")
+    data = response.data.decode("utf-8")
+    assert 'id="export-menu-btn"' in data
+    assert 'id="export-menu"' in data
+    assert 'id="copy-path-btn"' in data
+    assert 'id="export-html-btn"' in data
+    assert 'id="export-pdf-btn"' in data
+    assert 'id="edit-toggle-btn"' in data
+
+
+def test_index_dir_picker_has_aria_label(client):
+    response = client.get("/")
+    data = response.data.decode("utf-8")
+    assert 'id="dir-picker-btn"' in data
+    assert 'aria-label="Change directory"' in data
 
 
 def test_view_nonexistent_returns_404(client):

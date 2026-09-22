@@ -1,38 +1,13 @@
 {% extends "base.html" %}
+{% import "_file_tree_macro.html" as tree_macro %}
 
 {% block title %}MD Preview - File Browser{% endblock %}
-
-{% macro render_tree(tree, prefix='') %}
-<ul class="file-tree">
-    {% for name in tree.keys()|sort %}
-        {% set node = tree[name] %}
-        {% if node is mapping %}
-        <li class="directory">
-            <span class="folder-toggle" onclick="this.parentElement.classList.toggle('collapsed')">
-                <span class="icon folder-icon"></span>
-                <span class="name">{{ name }}</span>
-            </span>
-            {{ render_tree(node, prefix ~ name ~ '/') }}
-        </li>
-        {% else %}
-        <li class="file" data-path="{{ node }}">
-            <span class="icon file-icon"></span>
-            <a href="{{ url_for('view_file', filepath=node) }}">{{ name }}</a>
-            <span class="file-actions">
-                <button class="file-action-btn" data-action="rename" data-path="{{ node }}" title="Rename">&#x270F;</button>
-                <button class="file-action-btn" data-action="delete" data-path="{{ node }}" title="Delete">&#x2716;</button>
-            </span>
-        </li>
-        {% endif %}
-    {% endfor %}
-</ul>
-{% endmacro %}
 
 {% block sidebar %}
     <div class="sidebar-section">
         <h3>Files</h3>
         {% if tree %}
-            {{ render_tree(tree) }}
+            {{ tree_macro.render_tree(tree) }}
         {% else %}
             <p class="empty-message">No markdown files found.</p>
         {% endif %}
@@ -47,22 +22,10 @@
         <p>Select a markdown file from the sidebar to preview it, use live edit mode for quick changes, or drag and drop new files into the workspace.</p>
         <div class="hero-actions">
             <button class="btn btn-primary" id="hero-new-file-btn" type="button">Create a file</button>
-            <a class="btn btn-secondary" href="#file-library">Browse files</a>
         </div>
     </section>
 
-    {% if tree %}
-    <div class="file-list-main surface-panel" id="file-library">
-        <div class="section-heading">
-            <div>
-                <p class="eyebrow">Library</p>
-                <h2>Available files</h2>
-            </div>
-            <p class="section-copy">The sidebar search is faster for large folders. Press <code>/</code> to jump to it.</p>
-        </div>
-        {{ render_tree(tree) }}
-    </div>
-    {% else %}
+    {% if not tree %}
     <div class="empty-state surface-panel">
         <h2>No Markdown Files Found</h2>
         <p>No <code>.md</code> files were found in the current directory.</p>
