@@ -68,6 +68,14 @@ def test_view_nested_file(client):
     assert "Nested" in data
 
 
+def test_view_file_no_duplicate_path(client):
+    response = client.get("/view/sub/nested.md")
+    data = response.data.decode("utf-8")
+    assert 'class="doc-path"' not in data
+    assert 'class="doc-title"' in data
+    assert 'class="breadcrumb"' in data
+
+
 def test_view_nonexistent_returns_404(client):
     response = client.get("/view/does-not-exist.md")
     assert response.status_code == 404

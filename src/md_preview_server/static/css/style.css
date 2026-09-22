@@ -1029,17 +1029,6 @@ mark {
     margin-bottom: 4px;
 }
 
-.doc-path {
-    font-size: 0.78rem;
-    color: var(--color-text-secondary);
-    font-family: var(--font-mono);
-}
-
-.doc-path::before {
-    content: 'path: ';
-    opacity: 0.5;
-}
-
 .doc-stats {
     display: flex;
     gap: 8px;
