@@ -87,6 +87,13 @@ def test_view_file_export_dropdown(client):
     assert 'id="edit-toggle-btn"' in data
 
 
+def test_index_dir_picker_has_aria_label(client):
+    response = client.get("/")
+    data = response.data.decode("utf-8")
+    assert 'id="dir-picker-btn"' in data
+    assert 'aria-label="Change directory"' in data
+
+
 def test_view_nonexistent_returns_404(client):
     response = client.get("/view/does-not-exist.md")
     assert response.status_code == 404
