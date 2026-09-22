@@ -65,9 +65,14 @@
         {% endif %}
     {% endfor %}
     <div class="breadcrumb-actions">
-        <button class="btn btn-sm btn-secondary" id="copy-path-btn" data-path="{{ filepath }}">Copy Path</button>
-        <button class="btn btn-sm btn-secondary" id="export-html-btn" data-path="{{ filepath }}">Export HTML</button>
-        <button class="btn btn-sm btn-secondary" id="export-pdf-btn">Export PDF</button>
+        <div class="export-dropdown-container">
+            <button class="btn btn-sm btn-secondary" id="export-menu-btn" aria-haspopup="true" aria-expanded="false">Export &#9662;</button>
+            <div class="export-menu" id="export-menu" style="display: none;">
+                <button class="export-menu-item" id="copy-path-btn" data-path="{{ filepath }}">Copy Path</button>
+                <button class="export-menu-item" id="export-html-btn" data-path="{{ filepath }}">Export HTML</button>
+                <button class="export-menu-item" id="export-pdf-btn">Export PDF</button>
+            </div>
+        </div>
         <button class="btn btn-sm btn-edit-toggle" id="edit-toggle-btn">Edit</button>
     </div>
 </nav>

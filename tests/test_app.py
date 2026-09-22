@@ -76,6 +76,17 @@ def test_view_file_no_duplicate_path(client):
     assert 'class="breadcrumb"' in data
 
 
+def test_view_file_export_dropdown(client):
+    response = client.get("/view/hello.md")
+    data = response.data.decode("utf-8")
+    assert 'id="export-menu-btn"' in data
+    assert 'id="export-menu"' in data
+    assert 'id="copy-path-btn"' in data
+    assert 'id="export-html-btn"' in data
+    assert 'id="export-pdf-btn"' in data
+    assert 'id="edit-toggle-btn"' in data
+
+
 def test_view_nonexistent_returns_404(client):
     response = client.get("/view/does-not-exist.md")
     assert response.status_code == 404
