@@ -2282,6 +2282,28 @@ mark {
     }
 }
 
+@media (prefers-contrast: more) {
+    :root {
+        --color-text-secondary: #7fc27f;
+    }
+
+    :root[data-theme="amber"] {
+        --color-text-secondary: #c9a300;
+    }
+
+    :root[data-theme="dracula"] {
+        --color-text-secondary: #aab4d6;
+    }
+
+    :root[data-theme="nord"] {
+        --color-text-secondary: #c3c8d1;
+    }
+
+    :root[data-theme="light"] {
+        --color-text-secondary: #333333;
+    }
+}
+
 /* ─────────────────────────────────────────────
    RESPONSIVE
 ───────────────────────────────────────────── */
