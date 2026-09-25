@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+import md_preview_core.files as files_module
 import md_preview_server.app as app_module
 from md_preview_server.app import create_app
 
@@ -92,14 +93,14 @@ def test_scan_files_retries_if_invalidated_mid_scan(tmp_path, monkeypatch):
         if scan_count == 1:
             yield first
             second.write_text("second", encoding="utf-8")
-            app_module.invalidate_file_cache()
+            files_module.invalidate_file_cache()
             return
         yield from sorted(base_dir.glob("*.md"))
 
-    monkeypatch.setattr(app_module, "_iter_markdown_files", racing_scan)
-    app_module.invalidate_file_cache()
+    monkeypatch.setattr(files_module, "_iter_markdown_files", racing_scan)
+    files_module.invalidate_file_cache()
 
-    snapshot = app_module._scan_files(tmp_path)
+    snapshot = files_module.scan_files(tmp_path)
 
     assert scan_count == 2
     assert set(snapshot["tree"]) == {"first.md", "second.md"}
@@ -115,13 +116,13 @@ def test_scan_files_skips_file_that_disappears_before_stat(tmp_path, monkeypatch
     stable.write_text("stable", encoding="utf-8")
 
     monkeypatch.setattr(
-        app_module,
+        files_module,
         "_iter_markdown_files",
         lambda _base_dir: iter((stable, vanished)),
     )
-    app_module.invalidate_file_cache()
+    files_module.invalidate_file_cache()
 
-    snapshot = app_module._scan_files(tmp_path)
+    snapshot = files_module.scan_files(tmp_path)
 
     assert snapshot["tree"] == {"stable.md": "stable.md"}
     assert [item["path"] for item in snapshot["files"]] == ["stable.md"]

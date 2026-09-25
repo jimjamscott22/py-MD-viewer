@@ -6,7 +6,7 @@ import pytest
 
 import md_preview_server.app as app_module
 from md_preview_server.app import create_app
-from md_preview_server.storage import get_file_revision
+from md_preview_core.storage import get_file_revision
 
 
 @pytest.fixture

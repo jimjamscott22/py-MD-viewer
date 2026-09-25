@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-import md_preview_server.storage as storage
+import md_preview_core.storage as storage
 
 
 def test_read_text_stable_retries_when_file_changes(tmp_path, monkeypatch):

@@ -19,7 +19,7 @@ A local Markdown preview server with live reload, syntax highlighting, and a fil
 
 ## Requirements
 
-- Python 3.9+
+- Python 3.10+
 - [uv](https://docs.astral.sh/uv/) package manager
 
 ### Installing uv

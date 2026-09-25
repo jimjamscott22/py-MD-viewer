@@ -3,7 +3,7 @@ name = "md-preview-server"
 version = "0.1.0"
 description = "A local Markdown preview server with live reload"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 license = "MIT"
 authors = [{ name = "Jamie Scott" }]
 dependencies = [
@@ -27,4 +27,4 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/md_preview_server"]
+packages = ["src/md_preview_core", "src/md_preview_server"]

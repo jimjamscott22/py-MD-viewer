@@ -12,32 +12,35 @@ from pathlib import Path
 from flask import Flask, Response, abort, jsonify, render_template, request
 from werkzeug.utils import secure_filename
 
-from .renderer import (
+from md_preview_core.files import (
+    EXCLUDED_DIRS,
+    PathOutsideBaseError,
+    build_file_tree,
+    count_markdown_files as _count_markdown_files,
+    get_file_list,
+    invalidate_file_cache,
+    scan_files as _scan_files,
+    search_markdown_file as _search_markdown_file,
+    validate_path as _validate_core_path,
+)
+from md_preview_core.renderer import (
     render_markdown,
     render_markdown_cached,
     render_markdown_cached_with_meta,
     render_markdown_with_meta,
 )
-from .storage import (
+from md_preview_core.storage import (
     FileRevisionMismatch,
     atomic_write_text,
     read_text_stable,
     revision_from_stat,
 )
-from .watcher import start_watcher, stop_watcher
+from md_preview_core.watcher import start_watcher, stop_watcher
 
 _subscribers: list[queue.Queue] = []
 _subscribers_lock = threading.Lock()
 _watcher_lock = threading.Lock()
 _current_observer = None
-_file_cache: dict | None = None
-_file_cache_lock = threading.Lock()
-# Monotonic counter bumped on every invalidation. _scan_files captures the
-# value at entry and retries if it changes during the scan, preventing a
-# request from receiving or publishing an invalidated snapshot.
-_scan_generation: int = 0
-
-EXCLUDED_DIRS = {".git", "node_modules", ".venv", "__pycache__", ".tox", ".mypy_cache"}
 
 _MAX_CONTENT_SEARCH_WORKERS = 8
 _MAX_CONTENT_SEARCH_RESULTS = 50
@@ -48,14 +51,6 @@ _search_executor = ThreadPoolExecutor(
     max_workers=_MAX_CONTENT_SEARCH_WORKERS,
     thread_name_prefix="search",
 )
-
-
-def invalidate_file_cache() -> None:
-    """Clear the cached file tree/list so the next access re-scans."""
-    global _file_cache, _scan_generation
-    with _file_cache_lock:
-        _scan_generation += 1
-        _file_cache = None
 
 
 def notify_clients(
@@ -90,135 +85,11 @@ def notify_tree_changed() -> None:
 
 
 def validate_path(base_dir: Path, rel_path: str) -> Path:
-    """Validate a relative path is within base_dir. Returns resolved Path or aborts."""
-    rel_path = rel_path.replace("\\", "/")
-    target = (base_dir / rel_path).resolve()
-    if not target.is_relative_to(base_dir.resolve()):
-        abort(403)
-    return target
-
-
-def _iter_markdown_files(base_dir: Path):
-    """Yield markdown files under base_dir without descending excluded directories."""
-    stack = [base_dir.resolve()]
-    while stack:
-        current = stack.pop()
-        try:
-            with os.scandir(current) as entries:
-                sorted_entries = sorted(entries, key=lambda entry: entry.name.lower())
-        except (OSError, PermissionError):
-            continue
-
-        dirs = []
-        for entry in sorted_entries:
-            if entry.name in EXCLUDED_DIRS:
-                continue
-            try:
-                if entry.is_dir(follow_symlinks=False):
-                    dirs.append(Path(entry.path))
-                elif entry.is_file(follow_symlinks=False) and entry.name.lower().endswith(".md"):
-                    yield Path(entry.path)
-            except OSError:
-                continue
-
-        stack.extend(reversed(dirs))
-
-
-def _count_markdown_files(base_dir: Path) -> int:
-    """Count markdown files using the same pruned traversal as the file list."""
-    return sum(1 for _ in _iter_markdown_files(base_dir))
-
-
-def _scan_files(base_dir: Path) -> dict:
-    """Scan the directory once and build both tree and file list."""
-    global _file_cache
-    resolved_base = base_dir.resolve()
-    while True:
-        # Fast path: cache hit under lock, then release while scanning.
-        with _file_cache_lock:
-            if _file_cache is not None and _file_cache["base_dir"] == resolved_base:
-                return _file_cache
-            entry_generation = _scan_generation
-
-        tree: dict = {}
-        files: list[dict] = []
-        for md_file in _iter_markdown_files(resolved_base):
-            try:
-                rel = md_file.relative_to(resolved_base)
-                stat = md_file.stat()
-            except (OSError, ValueError):
-                # Files can disappear or be replaced between scandir and stat.
-                # Exclude them from both views of this snapshot.
-                continue
-
-            parts = rel.parts
-            node = tree
-            for part in parts[:-1]:
-                node = node.setdefault(part, {})
-            node[parts[-1]] = rel.as_posix()
-            files.append({
-                "path": rel.as_posix(),
-                "name": md_file.name,
-                "size": stat.st_size,
-                "modified": datetime.fromtimestamp(
-                    stat.st_mtime, tz=timezone.utc
-                ).isoformat(),
-            })
-
-        cache = {"base_dir": resolved_base, "tree": tree, "files": files}
-        with _file_cache_lock:
-            if _file_cache is not None and _file_cache["base_dir"] == resolved_base:
-                # Another thread published a snapshot while this scan ran.
-                return _file_cache
-            if _scan_generation != entry_generation:
-                # This result was invalidated while it was being built. Retry
-                # so this request also receives a current, internally
-                # consistent snapshot.
-                continue
-            _file_cache = cache
-            return cache
-
-
-def build_file_tree(base_dir: Path) -> dict:
-    """Build a nested dict representing the directory tree of .md files."""
-    return _scan_files(base_dir)["tree"]
-
-
-def get_file_list(base_dir: Path) -> list[dict]:
-    """Get a flat list of .md files with metadata."""
-    return _scan_files(base_dir)["files"]
-
-
-def _search_markdown_file(
-    base_dir: Path,
-    rel_path: str,
-    query_lower: str,
-    result_limit: int,
-) -> list[dict]:
-    """Return at most result_limit matching lines from one Markdown file."""
-    target = validate_path(base_dir, rel_path)
+    """Resolve a core path validation error to the server's HTTP 403 response."""
     try:
-        lines = target.read_text(encoding="utf-8").splitlines()
-    except (UnicodeDecodeError, OSError):
-        return []
-
-    matches = []
-    for i, line in enumerate(lines):
-        if query_lower not in line.lower():
-            continue
-        start = max(0, i - 1)
-        end = min(len(lines), i + 2)
-        snippet = "\n".join(lines[start:end])
-        if len(snippet) > 200:
-            snippet = snippet[:200]
-        matches.append({
-            "path": rel_path,
-            "line_number": i + 1,
-            "snippet": snippet,
-        })
-        if len(matches) >= result_limit:
-            break
-    return matches
+        return _validate_core_path(base_dir, rel_path)
+    except PathOutsideBaseError:
+        abort(403)
 
 
 def create_app(base_dir: Path | None = None) -> Flask:

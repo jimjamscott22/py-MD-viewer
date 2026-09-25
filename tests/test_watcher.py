@@ -7,9 +7,9 @@ from watchdog.events import (
     FileMovedEvent,
 )
 
-import md_preview_server.watcher as watcher_module
-from md_preview_server.storage import get_file_revision
-from md_preview_server.watcher import MarkdownFileHandler
+import md_preview_core.watcher as watcher_module
+from md_preview_core.storage import get_file_revision
+from md_preview_core.watcher import MarkdownFileHandler
 
 
 def make_handler(base_dir):

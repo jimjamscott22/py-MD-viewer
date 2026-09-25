@@ -2,7 +2,7 @@
 
 import os
 
-from md_preview_server.renderer import render_markdown, render_markdown_cached_with_meta
+from md_preview_core.renderer import render_markdown, render_markdown_cached_with_meta
 
 
 def test_heading():
