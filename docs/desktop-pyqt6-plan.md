@@ -26,7 +26,7 @@ Start the existing Flask app on a random localhost port in a background thread a
 
 ### Option B: Native shell + web-rendered document (**recommended**)
 Qt widgets handle all the app chrome. A single `QWebEngineView` shows only the rendered Markdown.
-- ✅ Native file tree, tabs, menus, shortcuts, dialogs, and system theme.
+- ✅ Native file tree, tabs, menus, shortcuts, dialogs, and app themes.
 - ✅ Rendering matches the web app exactly, because Mermaid, KaTeX and CSS still run in Chromium.
 - ✅ No HTTP server. Content is served through a custom URL scheme handler (see §4.3).
 - ❌ More work, roughly 2–4 weekends for full parity.
@@ -344,11 +344,13 @@ Every phase ends in a working, committable app. Phases 4 and 5 can happen in eit
 PyQt6 is **GPL v3** (or commercial). This repo is **MIT**. Using PyQt6 in your own copy is fine. **Distributing** a bundled binary (AppImage/Flatpak) that includes PyQt6 means the distributed app has to be GPL-compatible. The code can stay MIT, but the combined binary falls under GPL terms.
 If that matters, **PySide6** (the official Qt for Python, **LGPL**) has an almost identical API. Most of this plan works with a find-and-replace of `PyQt6` → `PySide6` and `pyqtSignal` → `Signal`. Decide this before Phase 2.
 
-## 10. Open questions
-1. Keep the Flask server long-term, or retire it once the desktop app reaches parity? (This plan assumes you keep both via the shared core.)
-2. Tabs or a single document per window?
-3. Follow the system light/dark theme automatically (`QStyleHints.colorScheme()`, Qt ≥ 6.5), or keep the app's own theme list?
-4. Is the AI assistant needed in v1?
+## 10. Decisions
+
+**Decided (2026-09-25):**
+- **Flask server:** keep it long-term alongside the desktop app. Both use the shared core.
+- **Documents:** use tabs in one window.
+- **Themes:** keep the app's theme menu with jamielab as the default and Paper as the light option. System theme detection may be added later as an explicit Auto choice; it does not override a selected theme.
+- **AI assistant:** defer it beyond v1. Prioritize the offline viewer and editor.
 
 **Decided (2026-09-24):**
 - **Prose font:** keep IBM Plex Mono everywhere, including `.markdown-body` prose. The `--font-prose` variable resolves to the mono stack in the jamielab theme; don't vendor a sans.
