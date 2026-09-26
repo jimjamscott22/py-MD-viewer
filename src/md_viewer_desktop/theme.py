@@ -5,7 +5,7 @@ Nothing downstream hand-types a hex value: the CSS variables for the
 rendered document, the QSS for the chrome and the ``QPalette`` are all
 built from a :class:`Theme` loaded from that file.
 
-Regenerate the checked-in document CSS after editing the tokens::
+Regenerate the checked-in document CSS and app icon after editing the tokens::
 
     uv run python -m md_viewer_desktop.theme
 """
@@ -26,6 +26,7 @@ if TYPE_CHECKING:  # pragma: no cover - typing only
 RESOURCES = Path(__file__).resolve().parent / "resources"
 TOKENS_PATH = RESOURCES / "design" / "jamielab.tokens.json"
 GENERATED_CSS_PATH = RESOURCES / "css" / "theme-jamielab.css"
+APP_ICON_PATH = RESOURCES / "icons" / "md-viewer.svg"
 
 REQUIRED_COLORS = (
     "ground",
@@ -245,6 +246,8 @@ def css_variables(t: Theme) -> str:
         f"{root} :focus-visible {{ outline: 2px solid {c['phosphor']}; outline-offset: 2px; }}",
         f"{root} ::selection {{ background: {c['phosphor']}; color: {c['ground']}; }}",
         "",
+        "/* Code highlighting: JamielabStyle (Pygments), scoped to this theme. */",
+        codehilite_css(t, f"{root} .codehilite"),
     ]
     return "\n".join(lines)
 
@@ -252,6 +255,140 @@ def css_variables(t: Theme) -> str:
 def write_generated_css(t: Theme, path: Path = GENERATED_CSS_PATH) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(css_variables(t), encoding="utf-8")
+    return path
+
+
+# ── Code highlighting (Pygments) ────────────────────────────────────
+
+
+def pygments_style(t: Theme) -> type:
+    """Build ``JamielabStyle``, a Pygments style class, from tokens.
+
+    Keywords ``phosphor``, strings ``amber``, names/functions ``teal``,
+    comments ``ink-muted`` italic, errors ``danger``, everything else
+    ``ink`` on ``panel``. Every token inherits a colour from ``Token``, so
+    no rule from the shared ``codehilite.css`` leaks through.
+    """
+    from pygments.style import Style
+    from pygments.token import (
+        Comment,
+        Error,
+        Generic,
+        Keyword,
+        Name,
+        Number,
+        Operator,
+        String,
+        Text,
+        Token,
+    )
+
+    c = t.color
+    styles = {
+        Token: c["ink"],
+        Text: c["ink"],
+        Comment: f"italic {c['ink-muted']}",
+        Comment.Preproc: f"noitalic {c['ink-muted']}",
+        Keyword: c["phosphor"],
+        Operator.Word: c["phosphor"],
+        String: c["amber"],
+        Number: c["ink"],
+        Name.Function: c["teal"],
+        Name.Class: c["teal"],
+        Name.Builtin: c["teal"],
+        Name.Decorator: c["teal"],
+        Name.Namespace: c["teal"],
+        Name.Tag: c["teal"],
+        Name.Exception: c["teal"],
+        Error: f"{c['danger']} bg:{c['panel']}",
+        Generic.Heading: f"bold {c['phosphor']}",
+        Generic.Subheading: f"bold {c['teal']}",
+        Generic.Deleted: c["danger"],
+        Generic.Inserted: c["phosphor"],
+        Generic.Error: c["danger"],
+        Generic.Emph: "italic",
+        Generic.Strong: "bold",
+        Generic.Prompt: c["ink-muted"],
+        Generic.Output: c["ink-muted"],
+    }
+    return type(
+        "JamielabStyle",
+        (Style,),
+        {
+            "name": t.name,
+            "background_color": c["panel"],
+            "highlight_color": c["ground"],
+            "line_number_color": c["ink-muted"],
+            "line_number_background_color": c["panel"],
+            "styles": styles,
+        },
+    )
+
+
+def codehilite_css(t: Theme, selector: str = ".codehilite") -> str:
+    """Pygments CSS for ``JamielabStyle`` under ``selector``.
+
+    Only the scoped background and token rules: ``get_style_defs()`` also
+    emits bare ``pre``/line-number rules that would leak into other themes.
+    """
+    from pygments.formatters import HtmlFormatter
+
+    formatter = HtmlFormatter(style=pygments_style(t))
+    # Reset weight/style first: codehilite.css sets bold/italic on some
+    # tokens, and Pygments emits no rule for "not bold". Less specific than
+    # the token rules below, more specific than codehilite.css.
+    reset = [f"{selector} * {{ font-weight: normal; font-style: normal }}"]
+    rules = reset + formatter.get_background_style_defs(selector) + formatter.get_token_style_defs(selector)
+    return "\n".join(rules) + "\n"
+
+
+PRINT_CODE_STYLE = "default"  # Pygments' stock light style
+
+
+def print_code_css() -> str:
+    """Code colours for print/PDF, which always come out light-on-white.
+
+    Uses Pygments' built-in light style rather than jamielab tokens (the
+    tokens are dark-only). Served as ``mdview://app/css/print.css``.
+    """
+    from pygments.formatters import HtmlFormatter
+
+    formatter = HtmlFormatter(style=PRINT_CODE_STYLE)
+    selector = ".markdown-body .codehilite"
+    # "default" leaves plain names uncoloured; use the page text colour (the
+    # light theme's, when printing) instead of codehilite.css's dark greens.
+    rules = [
+        f"{selector}, {selector} * {{ color: var(--color-text); font-weight: normal; font-style: normal }}"
+    ]
+    rules += formatter.get_background_style_defs(selector) + formatter.get_token_style_defs(selector)
+    return "@media print {\n" + "\n".join(rules) + "\n}\n"
+
+
+# ── App icon ────────────────────────────────────────────────────────
+
+
+def app_icon_svg(t: Theme) -> str:
+    """The ``md-viewer`` icon: a ``phosphor`` ``›_`` prompt on a ``ground`` square.
+
+    Drawn with strokes, not text, so it needs no font on the host.
+    """
+    c = t.color
+    radius = t.radius["radius-md"]
+    return (
+        '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">\n'
+        "  <!-- GENERATED by md_viewer_desktop.theme from jamielab.tokens.json. -->\n"
+        f'  <rect width="64" height="64" rx="{radius}" fill="{c["ground"]}"/>\n'
+        f'  <g fill="none" stroke="{c["phosphor"]}" stroke-width="5" stroke-linecap="square">\n'
+        '    <path d="M15 21 L27 32 L15 43" stroke-linejoin="miter"/>\n'
+        '    <path d="M33 44 H49"/>\n'
+        "  </g>\n"
+        "</svg>\n"
+    )
+
+
+def write_app_icon(t: Theme, path: Path = APP_ICON_PATH) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(app_icon_svg(t), encoding="utf-8")
     return path
 
 
@@ -280,6 +417,18 @@ QPushButton[danger="true"]  {{ color: {danger}; border-color: {danger}; }}
 QTabBar::tab {{ background: {ground}; color: {ink_muted}; padding: {space_2}px {space_4}px;
                border-bottom: 2px solid transparent; }}
 QTabBar::tab:selected {{ color: {ink}; border-bottom-color: {phosphor}; }}
+QTabBar::tab:hover {{ color: {ink}; }}
+QTabWidget::pane {{ border: 0; border-top: 1px solid {hairline}; }}
+QToolButton#tab-close {{ padding: 0; margin-left: {space_1}px; }}
+QToolBar {{ background: {ground}; border: 0; border-bottom: 1px solid {hairline};
+           padding: {space_1}px {space_2}px; spacing: {space_1}px; }}
+QToolBar::separator {{ background: {hairline}; width: 1px; margin: {space_1}px {space_2}px; }}
+QToolButton {{ background: transparent; color: {ink}; border: 1px solid transparent;
+              border-radius: {radius_sm}px; padding: {space_1}px; }}
+QToolButton:hover {{ border-color: {edge}; }}
+QToolButton:checked {{ background: {panel}; border-color: {edge}; }}
+QToolButton:focus {{ border: 2px solid {phosphor}; }}
+#find-bar {{ background: {panel}; border-top: 1px solid {hairline}; }}
 QMenuBar, QMenu, QStatusBar {{ background: {panel}; color: {ink}; }}
 QMenuBar::item:selected {{ background: {ground}; color: {phosphor}; }}
 QMenu {{ border: 1px solid {edge}; }} QMenu::item:selected {{ background: {phosphor}; color: {ground}; }}
@@ -379,8 +528,9 @@ def clear(app: "QApplication") -> None:
 
 
 def main() -> int:
-    path = write_generated_css(load_theme())
-    print(f"wrote {path.relative_to(Path.cwd()) if path.is_relative_to(Path.cwd()) else path}")
+    t = load_theme()
+    for path in (write_generated_css(t), write_app_icon(t)):
+        print(f"wrote {path.relative_to(Path.cwd()) if path.is_relative_to(Path.cwd()) else path}")
     return 0
 
 

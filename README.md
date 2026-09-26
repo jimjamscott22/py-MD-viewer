@@ -86,23 +86,39 @@ Runtime AI configuration still comes from the `OPENAI_API_KEY`, `LLM_BASE_URL`, 
 
 ## Desktop app (preview, Linux first)
 
-A native PyQt6 viewer that renders documents exactly like the web app, with no HTTP server and no network access. Mermaid, KaTeX and the IBM Plex Mono font are bundled. It uses the **jamielab** theme by default; Terminal, Amber, Dracula, Nord and Paper are under **View → Theme**.
+A native PyQt6 viewer that renders documents exactly like the web app, with no HTTP server and no network access. Mermaid, KaTeX, the IBM Plex Mono font and Lucide icons are bundled. It uses the **jamielab** theme by default; Terminal, Amber, Dracula, Nord and Paper are under **View → Theme**.
 
 ```bash
 uv sync --extra desktop
-uv run md-viewer README.md      # a file, with its folder in the sidebar
+uv run md-viewer README.md      # a file, in a tab, with its folder in the sidebar
+uv run md-viewer a.md b.md      # several files, one tab each
 uv run md-viewer ~/notes        # a folder
-uv run md-viewer                # reopen the last session
+uv run md-viewer                # reopen the last session (folder + tabs)
 ```
 
-- **File → Open…** (Ctrl+O), **File → Open Folder…** (Ctrl+Shift+O), or drop a `.md` file or folder on the window.
-- Documents reload automatically when they change on disk.
+Only one window runs at a time: launching `md-viewer foo.md` again opens `foo.md` as a new tab in the existing window (`--new-instance` starts a separate one).
+
+- **File → Open…** (Ctrl+O), **File → Open Folder…** (Ctrl+Shift+O), **File → Open Recent**, or drop `.md` files or a folder on the window.
+- Tabs: a click in the sidebar opens in the current tab; middle-click or Ctrl+click opens a new one. Ctrl+W closes, Ctrl+Tab / Ctrl+PgDown cycle.
+- **Contents** panel (Ctrl+Shift+T) lists the document's headings; click one to jump to it.
+- Find in page (Ctrl+F, then Enter / Shift+Enter or F3 / Shift+F3), zoom (Ctrl + / Ctrl − / Ctrl+0).
+- **File → Print…** (Ctrl+P) and **File → Export PDF…** print in the light Paper theme.
+- Documents reload automatically when they change on disk, including background tabs.
 - Links to other `.md` files open in the viewer. `http(s)` links open in your browser. Other links are blocked.
 - Scripts embedded in a Markdown file do not run.
 
+### Open `.md` files from the file manager
+
+```bash
+uv tool install '.[desktop]'    # puts md-viewer on your PATH
+md-viewer --install-desktop     # app menu entry, icon, default app for text/markdown
+```
+
+After that, double-clicking a `.md` file in Nautilus opens it in MD Viewer (in the running window, if there is one). `--install-desktop` writes to `~/.local/share` and uses whichever `md-viewer` you ran it with; `md-viewer --uninstall-desktop` removes the files again.
+
 On Ubuntu, Qt's xcb plugin needs `sudo apt install libxcb-cursor0`. If the document area stays blank (some VMs and NVIDIA setups), run with `--safe-mode` to disable GPU acceleration. On Wayland, `QT_QPA_PLATFORM=xcb` is the fallback if rendering glitches.
 
-The roadmap is in [`docs/desktop-pyqt6-plan.md`](docs/desktop-pyqt6-plan.md). Tabs, the `.desktop` entry, the editor and file operations come in later phases.
+The roadmap is in [`docs/desktop-pyqt6-plan.md`](docs/desktop-pyqt6-plan.md). The editor and file operations come in later phases.
 
 Vendored front-end assets are pinned in `scripts/vendor_assets.py`. To bump one, change the version there and run `uv run python scripts/vendor_assets.py`.
 

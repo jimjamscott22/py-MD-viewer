@@ -4,7 +4,7 @@ Usage::
 
     uv run python scripts/vendor_assets.py
 
-Fetches Mermaid, KaTeX and IBM Plex Mono from the npm registry, checks each
+Fetches Mermaid, KaTeX, IBM Plex Mono and Lucide icons from the npm registry, checks each
 tarball against the registry's published SHA-512 integrity hash, and copies
 only the files the viewer needs into
 ``src/md_viewer_desktop/resources/``. Re-running is safe; files are
@@ -40,6 +40,22 @@ class Package:
 
 
 PLEX_WEIGHTS = ("Regular", "Medium", "SemiBold", "Italic")
+
+# Lucide icons used by the desktop chrome (md_viewer_desktop.icons).
+LUCIDE_ICONS = (
+    "chevron-down",
+    "chevron-up",
+    "file-down",
+    "file-text",
+    "folder-open",
+    "list-tree",
+    "printer",
+    "refresh-cw",
+    "search",
+    "x",
+    "zoom-in",
+    "zoom-out",
+)
 
 PACKAGES = (
     Package(
@@ -78,6 +94,14 @@ PACKAGES = (
                 for w in PLEX_WEIGHTS
             },
             "LICENSE.txt": "fonts/OFL.txt",
+        },
+    ),
+    Package(
+        name="lucide-static",
+        version="1.48.0",
+        files={
+            **{f"icons/{name}.svg": f"icons/lucide/{name}.svg" for name in LUCIDE_ICONS},
+            "LICENSE": "icons/lucide/LICENSE",
         },
     ),
 )

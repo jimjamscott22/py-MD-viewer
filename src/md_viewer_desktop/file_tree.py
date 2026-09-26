@@ -10,8 +10,8 @@ from __future__ import annotations
 from pathlib import Path
 
 from PyQt6.QtCore import QModelIndex, Qt, pyqtSignal
-from PyQt6.QtGui import QStandardItem, QStandardItemModel
-from PyQt6.QtWidgets import QAbstractItemView, QTreeView
+from PyQt6.QtGui import QMouseEvent, QStandardItem, QStandardItemModel
+from PyQt6.QtWidgets import QAbstractItemView, QApplication, QTreeView
 
 from md_preview_core.files import build_file_tree
 
@@ -20,7 +20,10 @@ IS_DIR_ROLE = Qt.ItemDataRole.UserRole + 2
 
 
 class FileTree(QTreeView):
+    """Click/Enter opens in the current tab; middle-click or Ctrl+click in a new one."""
+
     fileActivated = pyqtSignal(str)  # relative posix path
+    fileActivatedInNewTab = pyqtSignal(str)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -119,6 +122,19 @@ class FileTree(QTreeView):
     def file_paths(self) -> list[str]:
         return [item.data(PATH_ROLE) for item in self._iter_items() if not item.data(IS_DIR_ROLE)]
 
+    def mouseReleaseEvent(self, event: QMouseEvent) -> None:  # noqa: N802 (Qt API)
+        if event.button() == Qt.MouseButton.MiddleButton:
+            index = self.indexAt(event.position().toPoint())
+            if index.isValid() and not index.data(IS_DIR_ROLE):
+                self.fileActivatedInNewTab.emit(index.data(PATH_ROLE))
+                event.accept()
+                return
+        super().mouseReleaseEvent(event)
+
     def _on_activated(self, index: QModelIndex) -> None:
-        if index.isValid() and not index.data(IS_DIR_ROLE):
+        if not index.isValid() or index.data(IS_DIR_ROLE):
+            return
+        if QApplication.keyboardModifiers() & Qt.KeyboardModifier.ControlModifier:
+            self.fileActivatedInNewTab.emit(index.data(PATH_ROLE))
+        else:
             self.fileActivated.emit(index.data(PATH_ROLE))

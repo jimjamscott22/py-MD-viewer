@@ -2,11 +2,24 @@
 
 from __future__ import annotations
 
+import json
+from dataclasses import dataclass
 from pathlib import Path
 
 from PyQt6.QtCore import QByteArray, QSettings
 
 DEFAULT_THEME = "jamielab"
+MAX_RECENT = 10
+
+
+@dataclass(frozen=True)
+class SessionTab:
+    root: Path  # folder the document's links resolve in
+    path: str  # posix path relative to root
+
+    @property
+    def file(self) -> Path:
+        return self.root / self.path
 
 
 class Settings:
@@ -43,6 +56,62 @@ class Settings:
     @last_file.setter
     def last_file(self, path: Path | None) -> None:
         self._set_path("session/file", path)
+
+    @property
+    def tabs(self) -> list[SessionTab]:
+        """Open tabs from the last session (falls back to the Phase 2 single file)."""
+        raw = self._s.value("session/tabs", "", type=str)
+        tabs: list[SessionTab] = []
+        try:
+            entries = json.loads(raw) if raw else []
+        except json.JSONDecodeError:
+            entries = []
+        for entry in entries if isinstance(entries, list) else []:
+            if isinstance(entry, dict) and entry.get("root") and entry.get("path"):
+                tabs.append(SessionTab(Path(entry["root"]), str(entry["path"])))
+        if not raw and (legacy := self.last_file) is not None:
+            tabs.append(SessionTab(legacy.parent, legacy.name))
+        return tabs
+
+    @tabs.setter
+    def tabs(self, tabs: list[SessionTab]) -> None:
+        self._s.setValue(
+            "session/tabs", json.dumps([{"root": str(t.root), "path": t.path} for t in tabs])
+        )
+
+    @property
+    def active_tab(self) -> int:
+        return self._s.value("session/active_tab", 0, type=int)
+
+    @active_tab.setter
+    def active_tab(self, index: int) -> None:
+        self._s.setValue("session/active_tab", index)
+
+    @property
+    def recent_files(self) -> list[Path]:
+        raw = self._s.value("recent/files", "", type=str)
+        try:
+            entries = json.loads(raw) if raw else []
+        except json.JSONDecodeError:
+            return []
+        return [Path(p) for p in entries if isinstance(p, str) and p] if isinstance(entries, list) else []
+
+    @recent_files.setter
+    def recent_files(self, paths: list[Path]) -> None:
+        self._s.setValue("recent/files", json.dumps([str(p) for p in paths[:MAX_RECENT]]))
+
+    def add_recent_file(self, path: Path) -> None:
+        paths = [p for p in self.recent_files if p != path]
+        self.recent_files = [path, *paths]
+
+    @property
+    def zoom(self) -> float:
+        value = self._s.value("view/zoom", 1.0, type=float)
+        return value if 0.25 <= value <= 5.0 else 1.0
+
+    @zoom.setter
+    def zoom(self, value: float) -> None:
+        self._s.setValue("view/zoom", float(value))
 
     @property
     def geometry(self) -> QByteArray | None:

@@ -14,8 +14,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="md-viewer",
         description=(
-            "Offline Markdown viewer. A file opens with its folder in the sidebar; "
-            "a folder opens in the sidebar. With no arguments, the last session is restored."
+            "Offline Markdown viewer. A file opens in a tab with its folder in the sidebar; "
+            "a folder opens in the sidebar. With no arguments, the last session is restored. "
+            "If MD Viewer is already running, the paths open in that window."
         ),
     )
     parser.add_argument(
@@ -23,7 +24,22 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         nargs="*",
         type=Path,
         metavar="PATH",
-        help="Markdown file or folder to open (only the first is used until tabs land)",
+        help="Markdown file(s) to open in tabs, or a folder for the sidebar",
+    )
+    parser.add_argument(
+        "--new-instance",
+        action="store_true",
+        help="start a separate window instead of handing paths to a running one",
+    )
+    parser.add_argument(
+        "--install-desktop",
+        action="store_true",
+        help="add MD Viewer to the app menu and make it the default for .md files, then exit",
+    )
+    parser.add_argument(
+        "--uninstall-desktop",
+        action="store_true",
+        help="remove the files --install-desktop wrote, then exit",
     )
     parser.add_argument(
         "--safe-mode",
@@ -55,6 +71,16 @@ def configure_environment(safe_mode: bool) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
+    if args.install_desktop or args.uninstall_desktop:
+        from . import desktop_integration
+
+        if args.install_desktop:
+            result = desktop_integration.install()
+        else:
+            result = desktop_integration.uninstall()
+        desktop_integration.report(result)
+        return 0
+
     error = check_paths(args.paths)
     if error:
         print(f"md-viewer: {error}", file=sys.stderr)
@@ -75,8 +101,10 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     from .document_view import register_scheme
+    from .icons import app_icon
     from .main_window import MainWindow
     from .settings import Settings
+    from .single_instance import InstanceServer, send_to_running
     from .theme import load_fonts, load_theme
 
     # Custom URL schemes must be registered before QApplication exists.
@@ -88,14 +116,29 @@ def main(argv: list[str] | None = None) -> int:
     app.setApplicationVersion(__version__)
     app.setDesktopFileName("md-viewer")
 
+    server = None
+    if not args.new_instance:
+        if send_to_running(args.paths):
+            return 0
+        server = InstanceServer()
+        if not server.listen():  # pragma: no cover - socket dir not writable
+            print("md-viewer: single-instance socket unavailable", file=sys.stderr)
+            server = None
+
+    app.setWindowIcon(app_icon())
     load_fonts()
     window = MainWindow(app, load_theme(), Settings())
+    if server is not None:
+        server.pathsReceived.connect(window.open_paths)
     if args.paths:
-        window.open_path(args.paths[0])
+        for path in args.paths:
+            window.open_path(path)
     else:
         window.restore_session()
     window.show()
     status = app.exec()
+    if server is not None:
+        server.close()
     # Delete the window (and its web page) before the app-owned web profile.
     sip.delete(window)
     return status

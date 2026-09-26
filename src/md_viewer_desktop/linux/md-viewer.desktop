@@ -1,0 +1,15 @@
+[Desktop Entry]
+Type=Application
+Version=1.5
+Name=MD Viewer
+GenericName=Markdown Viewer
+Comment=Read Markdown files offline, with live reload
+Exec=md-viewer %F
+TryExec=md-viewer
+Icon=md-viewer
+MimeType=text/markdown;text/x-markdown;
+Categories=Office;Viewer;Utility;
+Keywords=markdown;md;preview;notes;
+Terminal=false
+StartupNotify=true
+StartupWMClass=md-viewer
