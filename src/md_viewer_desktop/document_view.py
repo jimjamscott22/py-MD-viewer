@@ -2,18 +2,21 @@
 
 URL layout (no HTTP server involved):
 
-``mdview://doc/<relpath>``
+``mdview://doc-<key>/<relpath>``
     ``.md`` files are rendered to a full HTML page; any other file under
-    the base directory (images next to the doc) is served as-is. Relative
-    links in a document therefore resolve naturally.
+    that root folder (images next to the doc) is served as-is. Relative
+    links in a document therefore resolve naturally. Each root folder gets
+    its own host (:meth:`SchemeHandler.add_root`), so tabs opened from
+    different folders keep working side by side.
 ``mdview://app/<path>``
     Bundled CSS, fonts, scripts and vendored Mermaid/KaTeX.
 
-Every ``doc`` path goes through :func:`md_preview_core.files.validate_path`.
+Every doc path goes through :func:`md_preview_core.files.validate_path`.
 """
 
 from __future__ import annotations
 
+import hashlib
 import html
 import json
 import mimetypes
@@ -22,7 +25,8 @@ from pathlib import Path
 from string import Template
 from typing import Any
 
-from PyQt6.QtCore import QBuffer, QByteArray, QIODevice, QPointF, QUrl, pyqtSignal
+from PyQt6 import sip
+from PyQt6.QtCore import QBuffer, QByteArray, QIODevice, QPointF, QTimer, QUrl, pyqtSignal
 from PyQt6.QtGui import QDesktopServices
 from PyQt6.QtWebEngineCore import (
     QWebEnginePage,
@@ -73,10 +77,19 @@ def register_scheme() -> None:
     QWebEngineUrlScheme.registerScheme(scheme)
 
 
-def doc_url(rel_path: str, fragment: str = "") -> QUrl:
+def is_doc_host(host: str) -> bool:
+    return host == DOC_HOST or host.startswith(f"{DOC_HOST}-")
+
+
+def root_host(root: Path) -> str:
+    """Stable ``doc-<key>`` host for a root folder."""
+    return f"{DOC_HOST}-{hashlib.sha1(str(root).encode()).hexdigest()[:12]}"
+
+
+def doc_url(rel_path: str, fragment: str = "", host: str = DOC_HOST) -> QUrl:
     url = QUrl()
     url.setScheme(SCHEME)
-    url.setHost(DOC_HOST)
+    url.setHost(host)
     url.setPath("/" + rel_path.lstrip("/"))
     if fragment:
         url.setFragment(fragment)
@@ -184,6 +197,10 @@ def resolve_request(
                 _message_page("MD Viewer", "no file open · File → Open… (Ctrl+O)", doc_theme),
                 "text/html",
             )
+        if rel == "css/print.css":
+            from .theme import print_code_css
+
+            return Response(print_code_css().encode(), "text/css")
         target = _APP_ROOTS.get(rel)
         if target is None:
             target = validate_path(RESOURCES, rel)
@@ -191,7 +208,7 @@ def resolve_request(
             raise NotFound(rel)
         return Response(_read_app_file(rel, target), _mime(target))
 
-    if host != DOC_HOST or base_dir is None:
+    if not is_doc_host(host) or base_dir is None:
         raise NotFound(f"{host}{path}")
 
     target = validate_path(base_dir, rel)
@@ -244,14 +261,21 @@ class SchemeHandler(QWebEngineUrlSchemeHandler):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.base_dir: Path | None = None
+        self.roots: dict[str, Path] = {}
         self.doc_theme = "jamielab"
+
+    def add_root(self, root: Path) -> str:
+        """Serve ``root`` under its own host; returns the host."""
+        host = root_host(root)
+        self.roots[host] = root
+        return host
 
     def requestStarted(self, job: QWebEngineUrlRequestJob) -> None:  # noqa: N802 (Qt API)
         url = job.requestUrl()
         path = url.path(QUrl.ComponentFormattingOption.FullyDecoded)
         try:
-            response = resolve_request(self.base_dir, url.host(), path, self.doc_theme)
+            root = self.roots.get(url.host())
+            response = resolve_request(root, url.host(), path, self.doc_theme)
         except PathOutsideBaseError:
             job.fail(QWebEngineUrlRequestJob.Error.RequestDenied)
             return
@@ -292,7 +316,8 @@ class DocumentPage(QWebEnginePage):
             QDesktopServices.openUrl(url)
             return False
 
-        if scheme == SCHEME and url.host() == DOC_HOST:
+        # Only links within the same root folder: the host is the root.
+        if scheme == SCHEME and is_doc_host(url.host()) and url.host() == self.url().host():
             current = self.url()
             if url.matches(current, QUrl.UrlFormattingOption.RemoveFragment):
                 return True  # in-page anchor
@@ -306,13 +331,22 @@ class DocumentPage(QWebEnginePage):
 
 
 class DocumentView(QWebEngineView):
-    """A ``QWebEngineView`` that shows one rendered document at a time."""
+    """A ``QWebEngineView`` showing one rendered document (one tab).
+
+    ``root`` is the folder the document was opened from; its links and
+    images resolve inside it. ``current_path`` is relative to ``root``.
+    """
+
+    # Light theme used for print / PDF (dark themes print as light-on-white).
+    PRINT_THEME = "light"
 
     def __init__(self, profile: QWebEngineProfile, parent=None):
         super().__init__(parent)
         self._page = DocumentPage(profile, self)
         self.setPage(self._page)
         self._pending_scroll: QPointF | None = None
+        self.root: Path | None = None
+        self.host = DOC_HOST
         self.current_path: str | None = None
         self.loadFinished.connect(self._restore_scroll)
 
@@ -320,23 +354,81 @@ class DocumentView(QWebEngineView):
     def document_page(self) -> DocumentPage:
         return self._page
 
+    @property
+    def abs_path(self) -> Path | None:
+        if self.root is None or self.current_path is None:
+            return None
+        return self.root / self.current_path
+
     def show_welcome(self) -> None:
         self.current_path = None
         self._pending_scroll = None
         self.load(welcome_url())
 
-    def open_document(self, rel_path: str, fragment: str = "") -> None:
+    def open_document(self, rel_path: str, fragment: str = "", *, root: Path | None = None, host: str | None = None) -> None:
+        if root is not None:
+            self.root = root
+            self.host = host or root_host(root)
         self.current_path = rel_path
         self._pending_scroll = None
-        self.load(doc_url(rel_path, fragment))
+        self.load(doc_url(rel_path, fragment, self.host))
 
     def reload_document(self) -> None:
         """Re-render the current document, keeping the scroll position."""
         self._pending_scroll = self._page.scrollPosition()
-        self.load(self.url())
+        # Rebuild the URL from state: url() is still empty if the first load
+        # hasn't committed yet.
+        if self.current_path is not None:
+            self.load(doc_url(self.current_path, "", self.host))
+        else:
+            self.load(welcome_url())
 
     def set_doc_theme(self, doc_theme: str) -> None:
         self._page.runJavaScript(f"window.mdviewSetTheme && window.mdviewSetTheme({json.dumps(doc_theme)})")
+
+    def scroll_to_anchor(self, anchor: str) -> None:
+        self._page.runJavaScript(f"window.mdviewScrollTo && window.mdviewScrollTo({json.dumps(anchor)})")
+
+    def fetch_headings(self, callback) -> None:
+        """Call ``callback(list[(level, id, text)])`` with the page headings."""
+
+        def done(value) -> None:
+            if sip.isdeleted(self):
+                return
+            headings = []
+            for item in value or []:
+                try:
+                    level, anchor, text = int(item[0]), str(item[1]), str(item[2])
+                except (TypeError, ValueError, IndexError):
+                    continue
+                headings.append((level, anchor, text))
+            callback(headings)
+
+        self._page.runJavaScript("window.mdviewHeadings ? window.mdviewHeadings() : []", done)
+
+    def when_rendered(self, callback, timeout_ms: int = 5000) -> None:
+        """Call ``callback()`` once Mermaid has finished (re)drawing."""
+        remaining = [timeout_ms // 50]
+
+        def poll() -> None:
+            if not sip.isdeleted(self._page):
+                self._page.runJavaScript("!!window.mdviewRendering", check)
+
+        def check(busy) -> None:
+            if sip.isdeleted(self):
+                return
+            remaining[0] -= 1
+            if busy and remaining[0] > 0:
+                QTimer.singleShot(50, poll)
+            else:
+                callback()
+
+        poll()
+
+    def prepare_print(self, callback) -> None:
+        """Switch the page to the light theme, then call ``callback()``."""
+        self.set_doc_theme(self.PRINT_THEME)
+        self.when_rendered(callback)
 
     def _restore_scroll(self, ok: bool) -> None:
         position, self._pending_scroll = self._pending_scroll, None

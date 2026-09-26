@@ -113,3 +113,43 @@ def test_vendored_fonts_exist():
         assert (fonts / f"{stem}.woff").is_file()
         assert (fonts / f"{stem}.woff2").is_file()
     assert (fonts / "OFL.txt").is_file()
+
+
+def test_codehilite_css_is_scoped_and_complete(jamielab):
+    css = theme.codehilite_css(jamielab, ':root[data-theme="jamielab"] .codehilite')
+    rules = [line for line in css.splitlines() if line.strip()]
+    # Nothing unscoped (Pygments' bare `pre {}` / linenos rules would leak).
+    assert all(line.startswith(':root[data-theme="jamielab"] .codehilite') for line in rules)
+    # Bold/italic from codehilite.css is reset before the token rules.
+    assert rules[0].endswith("* { font-weight: normal; font-style: normal }")
+    c = {name: value.lower() for name, value in jamielab.color.items()}
+    lowered = css.lower()
+    assert f".codehilite .k {{ color: {c['phosphor']}" in lowered  # keyword
+    assert f".codehilite .s2 {{ color: {c['amber']}" in lowered  # string
+    assert f".codehilite .nf {{ color: {c['teal']}" in lowered  # function name
+    assert f".codehilite .c {{ color: {c['ink-muted']}; font-style: italic" in lowered
+    assert f".codehilite .err {{ color: {c['danger']}" in lowered
+    # Tokens codehilite.css colours must be overridden, not left to leak.
+    assert f".codehilite .nv {{ color: {c['ink']}" in lowered
+    assert f".codehilite {{ background: {c['panel']}" in lowered
+
+
+def test_generated_css_includes_code_style(jamielab):
+    assert theme.codehilite_css(jamielab, ':root[data-theme="jamielab"] .codehilite') in css_variables(jamielab)
+
+
+def test_app_icon_is_up_to_date(jamielab):
+    svg = theme.APP_ICON_PATH.read_text(encoding="utf-8")
+    assert svg == theme.app_icon_svg(jamielab), (
+        "md-viewer.svg is stale; run `uv run python -m md_viewer_desktop.theme`"
+    )
+    assert jamielab.color["ground"] in svg and jamielab.color["phosphor"] in svg
+    assert "<text" not in svg  # no font dependency on the host
+
+
+def test_vendored_lucide_icons_exist():
+    lucide = theme.RESOURCES / "icons" / "lucide"
+    assert (lucide / "LICENSE").is_file()
+    for name in ("search", "zoom-in", "zoom-out", "printer", "list-tree", "folder-open", "x"):
+        svg = (lucide / f"{name}.svg").read_text(encoding="utf-8")
+        assert 'stroke="currentColor"' in svg

@@ -130,6 +130,16 @@ def test_app_host_serves_bundled_assets(path, mime):
     assert response.body
 
 
+def test_print_css_is_light_and_print_only():
+    response = resolve_request(None, "app", "/css/print.css", "jamielab")
+    css = response.body.decode()
+    assert response.mime == "text/css"
+    assert css.startswith("@media print {")
+    assert ".markdown-body .codehilite .k" in css
+    page = build_page(title="t", content="<p>x</p>", doc_theme="")
+    assert 'href="mdview://app/css/print.css" media="print"' in page
+
+
 def test_app_host_rejects_traversal():
     with pytest.raises(PathOutsideBaseError):
         resolve_request(None, "app", "/../theme.py", "jamielab")
