@@ -84,6 +84,28 @@ Run `build-exe.bat` from the project root to create `dist\md-viewer.exe`. The ex
 
 Runtime AI configuration still comes from the `OPENAI_API_KEY`, `LLM_BASE_URL`, and `LLM_MODEL` environment variables.
 
+## Desktop app (preview, Linux first)
+
+A native PyQt6 viewer that renders documents exactly like the web app, with no HTTP server and no network access. Mermaid, KaTeX and the IBM Plex Mono font are bundled. It uses the **jamielab** theme by default; Terminal, Amber, Dracula, Nord and Paper are under **View → Theme**.
+
+```bash
+uv sync --extra desktop
+uv run md-viewer README.md      # a file, with its folder in the sidebar
+uv run md-viewer ~/notes        # a folder
+uv run md-viewer                # reopen the last session
+```
+
+- **File → Open…** (Ctrl+O), **File → Open Folder…** (Ctrl+Shift+O), or drop a `.md` file or folder on the window.
+- Documents reload automatically when they change on disk.
+- Links to other `.md` files open in the viewer. `http(s)` links open in your browser. Other links are blocked.
+- Scripts embedded in a Markdown file do not run.
+
+On Ubuntu, Qt's xcb plugin needs `sudo apt install libxcb-cursor0`. If the document area stays blank (some VMs and NVIDIA setups), run with `--safe-mode` to disable GPU acceleration. On Wayland, `QT_QPA_PLATFORM=xcb` is the fallback if rendering glitches.
+
+The roadmap is in [`docs/desktop-pyqt6-plan.md`](docs/desktop-pyqt6-plan.md). Tabs, the `.desktop` entry, the editor and file operations come in later phases.
+
+Vendored front-end assets are pinned in `scripts/vendor_assets.py`. To bump one, change the version there and run `uv run python scripts/vendor_assets.py`.
+
 ## Package Management
 
 All package operations go through `uv` rather than `pip` directly.
@@ -156,6 +178,8 @@ uv sync --extra dev
 uv run pytest
 ```
 
+The desktop tests in `tests/desktop/` also need the `desktop` extra (`uv sync --extra dev --extra desktop`). They run headless and are skipped when PyQt6 isn't installed.
+
 Run a specific test file:
 
 ```bash
@@ -167,7 +191,10 @@ uv run pytest tests/test_app.py -v
 ```
 py-MD-viewer/
 ├── src/
-│   └── md_preview_server/   # Main application package
+│   ├── md_preview_core/     # Shared rendering, storage, watcher, file scanning
+│   ├── md_preview_server/   # Flask web app
+│   └── md_viewer_desktop/   # PyQt6 desktop app
+├── scripts/                 # Maintenance scripts (asset vendoring)
 ├── tests/                   # Test suite
 ├── examples/                # Example markdown files
 ├── pyproject.toml           # Project metadata and dependencies

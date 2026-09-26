@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="$theme">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src mdview://app; style-src mdview: 'unsafe-inline'; font-src mdview: data:; img-src mdview: https: http: data:; media-src mdview: https:">
+<title>$title</title>
+<link rel="stylesheet" href="mdview://app/css/style.css">
+<link rel="stylesheet" href="mdview://app/css/codehilite.css">
+$extra_styles<link rel="stylesheet" href="mdview://app/css/desktop.css">
+<link rel="stylesheet" href="mdview://app/css/theme-jamielab.css">
+</head>
+<body>
+<main class="doc">
+<p class="doc-meta">$meta_line</p>
+$frontmatter
+<article class="markdown-body" id="view-container">
+$content
+</article>
+</main>
+$scripts</body>
+</html>

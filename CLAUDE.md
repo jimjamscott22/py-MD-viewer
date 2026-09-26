@@ -17,7 +17,10 @@ uv sync --extra dev
 # Run the server (serves markdown from current directory)
 uv run md-preview
 
-# Run all tests
+# Run the desktop app (needs the desktop extra: uv sync --extra desktop)
+uv run md-viewer [PATH]
+
+# Run all tests (desktop tests need --extra desktop; they're skipped otherwise)
 uv run pytest
 
 # Run a specific test file
@@ -48,6 +51,8 @@ This is a local Flask server (`src/md_preview_server/`) that renders `.md` files
 2. Render cache (`_render_cache` in `renderer.py`) — keyed by `(filepath, mtime)`, evicts oldest half when full.
 
 **Security:** All user-supplied file paths go through `validate_path(base_dir, rel_path)` in `app.py`, which resolves and checks `is_relative_to(base_dir)` to prevent path traversal. The server only accepts `.md` files for all write operations.
+
+**Desktop app (`src/md_viewer_desktop/`):** PyQt6 shell over `md_preview_core`, roadmap in `docs/desktop-pyqt6-plan.md`. Documents are served through a custom `mdview://` URL scheme (`document_view.py`): `mdview://doc/<relpath>` renders `.md` files or serves sibling assets (always via `validate_path`), and `mdview://app/<path>` serves bundled CSS/fonts/vendored JS. `style.css`/`codehilite.css` are shared with the Flask app, not copied. `theme.py` generates the document CSS (`resources/css/theme-jamielab.css`, regenerate with `uv run python -m md_viewer_desktop.theme`), QSS and `QPalette` from `resources/design/jamielab.tokens.json`. Don't hand-type hex values. `watcher_bridge.py` turns watchdog callbacks into a Qt signal.
 
 **Frontend:** Static JS in `static/js/` — `live-reload.js` (SSE client), `editor.js` (CodeMirror-based in-browser editor), `navigation.js`, `file-operations.js`, `directory-picker.js`. Templates in `templates/` use Jinja2 with `base.html` as the layout.
 
