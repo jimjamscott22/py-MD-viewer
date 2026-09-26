@@ -1,6 +1,6 @@
 # Plan: PyQt6 Desktop App (Linux / Ubuntu first)
 
-**Status:** Proposal — no code yet
+**Status:** Phases 1–2 implemented (shared core + MVP viewer). Phase 3 (Linux polish) is next. See §11 for where the code departs from this plan.
 **Goal:** A native-feeling Markdown viewer for Ubuntu that opens `.md` files from the file manager, renders them the same way the web app does (Pygments code highlighting, tables, TOC, Mermaid, KaTeX, frontmatter), live-reloads on disk changes, and keeps the editor. It should work fully offline, and wear the jamielab design system (§4.6).
 
 ---
@@ -353,3 +353,18 @@ If that matters, **PySide6** (the official Qt for Python, **LGPL**) has an almos
 **Decided (2026-09-24):**
 - **Prose font:** keep IBM Plex Mono everywhere, including `.markdown-body` prose. The `--font-prose` variable resolves to the mono stack in the jamielab theme; don't vendor a sans.
 - **Light theme:** jamielab stays dark-only. Paper remains the light option as-is; more light themes may be added later.
+
+## 11. Implementation notes (Phase 2)
+
+Where the MVP departs from the plan above, and why:
+
+- **Binding:** PyQt6, as written. The §9 licensing question (PyQt6 GPL vs PySide6 LGPL) is still open. It only matters once a bundled binary is distributed (Phase 6), and the port is mostly mechanical.
+- **File tree:** built from `md_preview_core.files.scan_files()` into a `QStandardItemModel` instead of `QFileSystemModel` + proxy. This gives the same exclusions (`.git`, `node_modules`, `.venv`…) and hides empty folders exactly like the web sidebar, without a recursive proxy filter. It is rebuilt (keeping expanded folders) on `tree_changed` watcher events.
+- **One `doc` host:** `mdview://doc/<relpath>` renders `.md` files and serves every other file (images) as-is, so relative links resolve with no separate `asset` host. Both paths go through `validate_path`.
+- **Content-Security-Policy:** the page shell only runs scripts from `mdview://app`. A `<script>` embedded in a Markdown file is blocked, and so are inline event handlers. Remote images still load.
+- **Offline CSS:** `style.css` is served straight from `md_preview_server/static/css` (shared, not copied), with its Google Fonts `@import` stripped so the app never makes that request.
+- **Fonts for Qt:** the `@ibm/plex-mono` npm package ships no TTF, so Qt loads the WOFF (zlib) files and the web view uses WOFF2. `scripts/vendor_assets.py` pulls Mermaid 10.9.3, KaTeX 0.16.22 and Plex Mono 1.1.0 from the npm registry and checks each tarball's SHA-512 integrity hash. The outputs are committed so a fresh clone works offline.
+- **Tests:** no `pytest-qt`. With it installed but no Qt binding present, it aborts the *whole* run at start-up, which would break `uv run pytest` for server-only installs. `tests/desktop/conftest.py` provides a `qapp` fixture and event-loop helpers instead, and skips the folder when PyQt6 is missing. Theme tests (`tests/test_desktop_theme.py`) are pure Python and always run.
+- **Chrome per theme:** jamielab styles the chrome for every dark document theme. Paper switches the chrome to stock Fusion light. Per-theme chrome palettes can come later.
+- **Pulled forward from Phase 3:** Mermaid `themeVariables` from tokens, and window geometry in `QSettings`.
+- **Link clicks** are handed to the window through a queued connection. Starting a new `load()` from inside `acceptNavigationRequest` makes Chromium abort the process.
