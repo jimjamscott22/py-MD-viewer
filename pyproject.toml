@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "A local Markdown preview server with live reload"
 readme = "README.md"
 requires-python = ">=3.10"
-license = "MIT"
+license = "GPL-3.0-or-later"
 authors = [{ name = "Jamie Scott" }]
 dependencies = [
     "flask>=3.0",

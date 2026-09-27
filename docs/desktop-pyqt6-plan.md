@@ -341,8 +341,8 @@ Every phase ends in a working, committable app. Phases 4 and 5 can happen in eit
 - Headless CI: `QT_QPA_PLATFORM=offscreen` and `QTWEBENGINE_DISABLE_SANDBOX=1`.
 
 ## 9. Licensing note ⚠️
-PyQt6 is **GPL v3** (or commercial). This repo is **MIT**. Using PyQt6 in your own copy is fine. **Distributing** a bundled binary (AppImage/Flatpak) that includes PyQt6 means the distributed app has to be GPL-compatible. The code can stay MIT, but the combined binary falls under GPL terms.
-If that matters, **PySide6** (the official Qt for Python, **LGPL**) has an almost identical API. Most of this plan works with a find-and-replace of `PyQt6` → `PySide6` and `pyqtSignal` → `Signal`. Decide this before Phase 2.
+PyQt6 is **GPL v3** (or commercial). **Decided (2026-09-26):** this repo is now **GPL-3.0-or-later** (`LICENSE`, `pyproject.toml`, README), which matches PyQt6's GPL terms, so a bundled AppImage/Flatpak that includes PyQt6 needs no relicensing.
+If the project ever needs a non-GPL license, **PySide6** (the official Qt for Python, **LGPL**) has an almost identical API. Most of this plan would port with a find-and-replace of `PyQt6` → `PySide6` and `pyqtSignal` → `Signal`.
 
 ## 10. Decisions
 
@@ -360,7 +360,7 @@ If that matters, **PySide6** (the official Qt for Python, **LGPL**) has an almos
 
 Where the MVP departs from the plan above, and why:
 
-- **Binding:** PyQt6, as written. The §9 licensing question (PyQt6 GPL vs PySide6 LGPL) is still open. It only matters once a bundled binary is distributed (Phase 6), and the port is mostly mechanical.
+- **Binding:** PyQt6, as written. The §9 licensing question is settled: the repo is GPL-3.0-or-later, compatible with PyQt6's GPL terms.
 - **File tree:** built from `md_preview_core.files.scan_files()` into a `QStandardItemModel` instead of `QFileSystemModel` + proxy. This gives the same exclusions (`.git`, `node_modules`, `.venv`…) and hides empty folders exactly like the web sidebar, without a recursive proxy filter. It is rebuilt (keeping expanded folders) on `tree_changed` watcher events.
 - **One `doc` host:** `mdview://doc/<relpath>` renders `.md` files and serves every other file (images) as-is, so relative links resolve with no separate `asset` host. Both paths go through `validate_path`.
 - **Content-Security-Policy:** the page shell only runs scripts from `mdview://app`. A `<script>` embedded in a Markdown file is blocked, and so are inline event handlers. Remote images still load.
