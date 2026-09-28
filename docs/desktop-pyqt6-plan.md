@@ -1,6 +1,6 @@
 # Plan: PyQt6 Desktop App (Linux / Ubuntu first)
 
-**Status:** Proposal — no code yet
+**Status:** Phases 1–3 implemented (shared core, MVP viewer, Linux polish). Phase 4 (editor) or 5 (file ops + search) is next. See §11 for where the code departs from this plan.
 **Goal:** A native-feeling Markdown viewer for Ubuntu that opens `.md` files from the file manager, renders them the same way the web app does (Pygments code highlighting, tables, TOC, Mermaid, KaTeX, frontmatter), live-reloads on disk changes, and keeps the editor. It should work fully offline, and wear the jamielab design system (§4.6).
 
 ---
@@ -355,3 +355,33 @@ If that matters, **PySide6** (the official Qt for Python, **LGPL**) has an almos
 **Decided (2026-09-24):**
 - **Prose font:** keep IBM Plex Mono everywhere, including `.markdown-body` prose. The `--font-prose` variable resolves to the mono stack in the jamielab theme; don't vendor a sans.
 - **Light theme:** jamielab stays dark-only. Paper remains the light option as-is; more light themes may be added later.
+
+## 11. Implementation notes (Phase 2)
+
+Where the MVP departs from the plan above, and why:
+
+- **Binding:** PyQt6, as written. The §9 licensing question (PyQt6 GPL vs PySide6 LGPL) is still open. It only matters once a bundled binary is distributed (Phase 6), and the port is mostly mechanical.
+- **File tree:** built from `md_preview_core.files.scan_files()` into a `QStandardItemModel` instead of `QFileSystemModel` + proxy. This gives the same exclusions (`.git`, `node_modules`, `.venv`…) and hides empty folders exactly like the web sidebar, without a recursive proxy filter. It is rebuilt (keeping expanded folders) on `tree_changed` watcher events.
+- **One `doc` host:** `mdview://doc/<relpath>` renders `.md` files and serves every other file (images) as-is, so relative links resolve with no separate `asset` host. Both paths go through `validate_path`.
+- **Content-Security-Policy:** the page shell only runs scripts from `mdview://app`. A `<script>` embedded in a Markdown file is blocked, and so are inline event handlers. Remote images still load.
+- **Offline CSS:** `style.css` is served straight from `md_preview_server/static/css` (shared, not copied), with its Google Fonts `@import` stripped so the app never makes that request.
+- **Fonts for Qt:** the `@ibm/plex-mono` npm package ships no TTF, so Qt loads the WOFF (zlib) files and the web view uses WOFF2. `scripts/vendor_assets.py` pulls Mermaid 10.9.3, KaTeX 0.16.22 and Plex Mono 1.1.0 from the npm registry and checks each tarball's SHA-512 integrity hash. The outputs are committed so a fresh clone works offline.
+- **Tests:** no `pytest-qt`. With it installed but no Qt binding present, it aborts the *whole* run at start-up, which would break `uv run pytest` for server-only installs. `tests/desktop/conftest.py` provides a `qapp` fixture and event-loop helpers instead, and skips the folder when PyQt6 is missing. Theme tests (`tests/test_desktop_theme.py`) are pure Python and always run.
+- **Chrome per theme:** jamielab styles the chrome for every dark document theme. Paper switches the chrome to stock Fusion light. Per-theme chrome palettes can come later.
+- **Pulled forward from Phase 3:** Mermaid `themeVariables` from tokens, and window geometry in `QSettings`.
+- **Link clicks** are handed to the window through a queued connection. Starting a new `load()` from inside `acceptNavigationRequest` makes Chromium abort the process.
+
+## 12. Implementation notes (Phase 3)
+
+- **Tabs and roots:** every tab remembers the folder it was opened from (its *root*) and is served from its own host, `mdview://doc-<sha1(root)[:12]>/<relpath>`. This lets tabs from different folders coexist: opening a file outside the sidebar's folder moves the sidebar but leaves other tabs working (their links, images and live reload still resolve in their own root). One watchdog observer runs per root in use (sidebar folder plus tab roots), and stops when the last tab using it closes. The `doc` host from Phase 2 is still accepted by `resolve_request`.
+- **Which tab:** sidebar click and in-document links replace the current tab. Middle-click or Ctrl+click in the sidebar, File → Open, Open Recent, drag-and-drop, CLI arguments and second launches open a new tab. A file that is already open just switches to its tab. Closing the last tab leaves a welcome tab.
+- **Session:** `QSettings` stores the tabs as JSON (`root` + relative `path`) and the active index. It is only written once something has been opened or restored, so creating a window never wipes the previous session. Phase 2's single `session/file` is read as a fallback.
+- **Single instance:** `QLocalServer` named `jamielab-md-viewer-<uid>` (a Unix socket, user-only access). A second launch sends `{"paths": [...]}` as one JSON line and waits for `ok`; if nobody answers, the socket is stale (crash) and the new process takes it over. `--new-instance` skips the handoff.
+- **Desktop integration:** `md-viewer --install-desktop` writes the `.desktop` file (from `linux/md-viewer.desktop`, with `Exec` pointing at the `md-viewer` that ran it), the icon and `linux/md-viewer.xml` under `$XDG_DATA_HOME`, then runs `update-mime-database`, `update-desktop-database`, `gtk-update-icon-cache` and `xdg-mime default` when they exist. `--uninstall-desktop` removes the files. `StartupWMClass=md-viewer` matches `setDesktopFileName("md-viewer")`.
+- **TOC:** headings are read from the rendered DOM (`mdviewHeadings()` in `page.js`), not from python-markdown's `toc_tokens`. No core change was needed, and the panel always matches what is on screen after a live reload.
+- **Pygments:** `JamielabStyle` is built from tokens and emitted into `theme-jamielab.css` with only scoped rules (`get_style_defs()` also emits bare `pre`/line-number rules that would leak into other themes). A `Token` base colour and a weight/style reset stop `codehilite.css` from leaking through.
+- **Print / PDF:** dark themes print as light text on white, so both switch the page to Paper (`data-theme="light"`), wait for Mermaid to redraw (`window.mdviewRendering`), print, then switch back. Code colours for print come from Pygments' stock `default` style in a `@media print` sheet (`mdview://app/css/print.css`, generated on request), so Paper on screen is unchanged. Page size is Letter for US locales and A4 elsewhere, with 15 mm margins.
+- **Find:** Chromium only searches a visible page. The match count comes from `QWebEnginePage.findTextFinished`.
+- **Icons:** Lucide 1.48.0 (`lucide-static` on npm, ISC) is vendored by `scripts/vendor_assets.py`. `icons.py` swaps `currentColor` for `ink-muted` / `ink` / `phosphor` / `edge` per `QIcon` mode (palette colours under Paper) and thins the stroke to 1.5. The app icon (`›_`) is generated by `theme.py` as strokes, so it needs no font.
+- **Zoom** is one factor for all tabs (0.5–3×), stored in `QSettings`, and re-applied after each load.
+- **Lifetime:** page, watcher and JavaScript callbacks can fire while a window is being torn down, and PyQt6 aborts on an exception in a slot. Signals connect to bound methods (Qt drops those with the window) and async callbacks check `sip.isdeleted`.

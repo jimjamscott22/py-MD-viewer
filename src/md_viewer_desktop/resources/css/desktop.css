@@ -1,0 +1,46 @@
+/* Page layout for the desktop web view. Colours come from style.css
+   theme variables (and theme-jamielab.css); nothing is hard-coded here. */
+
+body {
+    display: block;
+    min-height: 100vh;
+}
+
+.doc {
+    max-width: 880px;
+    margin: 0 auto;
+    padding: 24px 24px 64px;
+}
+
+.doc-meta {
+    color: var(--color-text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-size: 0.72rem;
+    margin-bottom: 16px;
+}
+
+.doc-meta:empty {
+    display: none;
+}
+
+.frontmatter-card {
+    margin-bottom: 16px;
+}
+
+.markdown-body {
+    padding: 0;
+}
+
+.markdown-body img {
+    max-width: 100%;
+}
+
+.doc-message {
+    color: var(--color-text-secondary);
+    padding: 24px 0;
+}
+
+.doc-message-error {
+    color: var(--color-danger);
+}
