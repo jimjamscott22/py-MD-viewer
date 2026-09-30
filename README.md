@@ -100,6 +100,9 @@ Only one window runs at a time: launching `md-viewer foo.md` again opens `foo.md
 
 - **File → Open…** (Ctrl+O), **File → Open Folder…** (Ctrl+Shift+O), **File → Open Recent**, or drop `.md` files or a folder on the window.
 - Tabs: a click in the sidebar opens in the current tab; middle-click or Ctrl+click opens a new one. Ctrl+W closes, Ctrl+Tab / Ctrl+PgDown cycle.
+- Filter the **Files** sidebar by filename or relative path (case-insensitive). Matching folders expand automatically; clear the filter to restore the full tree.
+- Right-click the **Files** tree to create a Markdown file in that folder, rename a file, or move it to Trash after confirmation. Renaming updates open tabs; trashed files can be recovered from your file manager's Trash.
+- **Edit → Find in Folder…** (Ctrl+Shift+F) searches Markdown contents in the sidebar folder, showing up to 50 matching source lines with snippets. Click a result to open the document and find the matching rendered line. Searches run in the background and refresh after disk changes.
 - **Contents** panel (Ctrl+Shift+T) lists the document's headings; click one to jump to it.
 - Find in page (Ctrl+F, then Enter / Shift+Enter or F3 / Shift+F3), zoom (Ctrl + / Ctrl − / Ctrl+0).
 - **File → Print…** (Ctrl+P) and **File → Export PDF…** print in the light Paper theme.
@@ -118,7 +121,7 @@ After that, double-clicking a `.md` file in Nautilus opens it in MD Viewer (in t
 
 On Ubuntu, Qt's xcb plugin needs `sudo apt install libxcb-cursor0`. If the document area stays blank (some VMs and NVIDIA setups), run with `--safe-mode` to disable GPU acceleration. On Wayland, `QT_QPA_PLATFORM=xcb` is the fallback if rendering glitches.
 
-The roadmap is in [`docs/desktop-pyqt6-plan.md`](docs/desktop-pyqt6-plan.md). The editor and file operations come in later phases.
+The roadmap is in [`docs/desktop-pyqt6-plan.md`](docs/desktop-pyqt6-plan.md). The editor and packaging remain for later phases.
 
 Vendored front-end assets are pinned in `scripts/vendor_assets.py`. To bump one, change the version there and run `uv run python scripts/vendor_assets.py`.
 

@@ -17,6 +17,7 @@ from PyQt6.QtGui import (
     QKeySequence,
     QPageLayout,
     QPageSize,
+    QTextDocument,
 )
 from PyQt6.QtPrintSupport import QPrintDialog, QPrinter
 from PyQt6.QtWebEngineCore import QWebEngineFindTextResult, QWebEnginePage, QWebEngineProfile
@@ -25,6 +26,7 @@ from PyQt6.QtWidgets import (
     QDockWidget,
     QFileDialog,
     QLabel,
+    QLineEdit,
     QMainWindow,
     QMessageBox,
     QTabBar,
@@ -35,15 +37,18 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from md_preview_core.files import PathOutsideBaseError, validate_path
+from md_preview_core.files import PathOutsideBaseError, invalidate_file_cache, validate_path
+from md_preview_core.renderer import render_markdown
 
 from . import __version__
 from . import icons
 from . import theme as theme_mod
 from .document_view import SCHEME, DocumentView, SchemeHandler
 from .file_tree import FileTree
+from .file_operations import FileOperations
 from .find_bar import FindBar
 from .settings import SessionTab, Settings
+from .search_panel import SearchPanel
 from .theme import Theme
 from .toc_panel import TocPanel
 from .watcher_bridge import WatcherBridge
@@ -100,6 +105,8 @@ class MainWindow(QMainWindow):
         # Nothing is written to the saved session until something is opened
         # (or restored), so building the window never wipes the last session.
         self._session_active = False
+        self._pending_search = None
+        self._search_navigation = 0
 
         self.setWindowTitle(APP_NAME)
         self.setWindowIcon(icons.app_icon())
@@ -138,13 +145,38 @@ class MainWindow(QMainWindow):
         self.tree = FileTree(self)
         self.tree.fileActivated.connect(self.open_document)
         self.tree.fileActivatedInNewTab.connect(self._open_in_new_tab)
-        self.files_dock = self._dock("FILES", "files-dock", self.tree, Qt.DockWidgetArea.LeftDockWidgetArea)
+        self.file_operations = FileOperations(self)
+        self.tree.createRequested.connect(self._create_file)
+        self.tree.renameRequested.connect(self._rename_file)
+        self.tree.trashRequested.connect(self._trash_file)
+        self.file_operations.created.connect(self._on_file_created)
+        self.file_operations.renamed.connect(self._on_file_renamed)
+        self.file_operations.trashed.connect(self._on_file_trashed)
+        self.file_operations.failed.connect(self._on_file_operation_failed)
+        self.file_filter = QLineEdit(self)
+        self.file_filter.setPlaceholderText("Filter files…")
+        self.file_filter.setAccessibleName("Filter files by name or path")
+        self.file_filter.setToolTip("Match part of a filename or relative path")
+        self.file_filter.setClearButtonEnabled(True)
+        self.file_filter.textChanged.connect(self.tree.set_filter_text)
+        files_panel = QWidget(self)
+        files_layout = QVBoxLayout(files_panel)
+        files_layout.setContentsMargins(0, 0, 0, 0)
+        files_layout.setSpacing(theme.space["space-2"])
+        files_layout.addWidget(self.file_filter)
+        files_layout.addWidget(self.tree, 1)
+        self.files_dock = self._dock("FILES", "files-dock", files_panel, Qt.DockWidgetArea.LeftDockWidgetArea)
         self.resizeDocks([self.files_dock], [280], Qt.Orientation.Horizontal)
 
         self.toc = TocPanel(self)
         self.toc.headingActivated.connect(self._scroll_to_heading)
         self.toc_dock = self._dock("CONTENTS", "toc-dock", self.toc, Qt.DockWidgetArea.RightDockWidgetArea)
         self.resizeDocks([self.toc_dock], [240], Qt.Orientation.Horizontal)
+
+        self.search_panel = SearchPanel(self)
+        self.search_panel.resultActivated.connect(self._open_search_result)
+        self.search_dock = self._dock("SEARCH", "search-dock", self.search_panel, Qt.DockWidgetArea.LeftDockWidgetArea)
+        self.search_dock.hide()
 
         self.status_label = QLabel(self)
         self.zoom_label = QLabel(self)
@@ -219,12 +251,16 @@ class MainWindow(QMainWindow):
         self._action(
             edit_menu, "Find Pre&vious", QKeySequence.StandardKey.FindPrevious, self.find_bar.find_previous
         )
+        self._action(edit_menu, "Find in &Folder…", QKeySequence("Ctrl+Shift+F"), self.open_content_search, icon="search")
 
         view_menu = self.menuBar().addMenu("&View")
         toggle_files = self.files_dock.toggleViewAction()
         toggle_files.setText("&Files Panel")
         toggle_files.setShortcut(QKeySequence("Ctrl+Shift+E"))
         view_menu.addAction(toggle_files)
+        toggle_search = self.search_dock.toggleViewAction()
+        toggle_search.setText("&Search Panel")
+        view_menu.addAction(toggle_search)
         self.toggle_toc_action = self.toc_dock.toggleViewAction()
         self.toggle_toc_action.setText("&Contents Panel")
         self.toggle_toc_action.setShortcut(QKeySequence("Ctrl+Shift+T"))
@@ -441,6 +477,10 @@ class MainWindow(QMainWindow):
             view.setZoomFactor(self._zoom)
         if view is self.view:
             self._refresh_toc()
+        if ok and self._pending_search is not None and self._pending_search[0] is view:
+            _, result, query = self._pending_search
+            self._pending_search = None
+            self._highlight_search_result(view, result, query)
 
     # ── Opening things ──────────────────────────────────────────────
 
@@ -482,6 +522,7 @@ class MainWindow(QMainWindow):
             return
         self.base_dir = base_dir
         self.tree.set_base_dir(base_dir)
+        self.search_panel.set_root(base_dir)
         self._sync_tree_selection()
         self._sync_watchers()
         self._settings.last_folder = base_dir
@@ -625,6 +666,8 @@ class MainWindow(QMainWindow):
             self._on_file_changed(bridge.base_dir, rel_path, event_type)
 
     def _on_file_changed(self, root: Path, rel_path: str, event_type: str) -> None:
+        if root == self.base_dir:
+            self.search_panel.refresh()
         if event_type == "tree_changed" and root == self.base_dir:
             self._tree_refresh.start()
         for view in self.views():
@@ -646,6 +689,115 @@ class MainWindow(QMainWindow):
             self.tree.select_path(None)
             return
         self.tree.select_path(file.relative_to(self.base_dir).as_posix())
+
+    # ── Sidebar file operations ────────────────────────────────────
+
+    def _create_file(self, root: Path, directory: str) -> None:
+        if root is not None:
+            self.file_operations.create(root, directory)
+
+    def _rename_file(self, root: Path, rel_path: str) -> None:
+        if root is not None:
+            self.file_operations.rename(root, rel_path)
+
+    def _trash_file(self, root: Path, rel_path: str) -> None:
+        if root is not None:
+            self.file_operations.trash(root, rel_path)
+
+    def _on_file_operation_failed(self, message: str) -> None:
+        self.show_status(message, "error")
+
+    def _on_file_created(self, root: Path, path: str) -> None:
+        invalidate_file_cache()
+        self._refresh_tree()
+        self.search_panel.refresh()
+        self._show_document(root, path, new_tab=True)
+        self.show_status(f"created · {path}")
+
+    def _on_file_renamed(self, root: Path, old_path: str, new_path: str) -> None:
+        old, new = root / old_path, root / new_path
+        for view in self.views():
+            if view.abs_path == old:
+                view.open_document(new.relative_to(view.root).as_posix())
+                self._update_tab_label(view)
+        self._settings.recent_files = list(dict.fromkeys(
+            new if path == old else path for path in self._settings.recent_files
+        ))
+        invalidate_file_cache()
+        self._refresh_tree()
+        self.search_panel.refresh()
+        self._sync_watchers()
+        self._save_session()
+        self._update_title()
+        self.show_status(f"renamed · {old_path} → {new_path}")
+
+    def _on_file_trashed(self, root: Path, path: str) -> None:
+        target = root / path
+        for view in reversed(self.views()):
+            if view.abs_path == target:
+                self.close_tab(self.tabs.indexOf(view))
+        self._settings.recent_files = [p for p in self._settings.recent_files if p != target]
+        invalidate_file_cache()
+        self._refresh_tree()
+        self.search_panel.refresh()
+        self.show_status(f"moved to Trash · {path} · recover from your file manager")
+
+    # ── Folder content search ───────────────────────────────────────
+
+    def open_content_search(self) -> None:
+        self.search_dock.show()
+        self.search_dock.raise_()
+        self.search_panel.edit.setFocus(Qt.FocusReason.ShortcutFocusReason)
+        self.search_panel.edit.selectAll()
+
+    def _open_search_result(self, root: Path, result: dict, query: str) -> None:
+        try:
+            target = validate_path(root, result["path"])
+            if not target.is_file():
+                raise ValueError("file no longer exists")
+        except (OSError, ValueError) as exc:
+            self.show_status(f"search result unavailable: {exc}", "error")
+            self.search_panel.refresh()
+            return
+        self._search_navigation += 1
+        if self._show_document(root, result["path"]):
+            self._pending_search = (self.view, result, query)
+            self.view.reload_document()
+
+    def _highlight_search_result(self, view: DocumentView, result: dict, query: str) -> None:
+        # Search the rendered source line, removing Markdown syntax. Its ordinal
+        # distinguishes repeated identical lines. Source-only matches retain
+        # their exact line/snippet in the dock even when absent from the page.
+        plain = QTextDocument()
+        plain.setHtml(render_markdown(result["source_line"]))
+        text = plain.toPlainText().strip() or query
+        generation = self._search_navigation
+        remaining = min(result["occurrence"], 50)
+        expected = view.abs_path
+
+        def alive() -> bool:
+            return (not sip.isdeleted(self) and not sip.isdeleted(view)
+                    and generation == self._search_navigation and view is self.view
+                    and view.abs_path == expected)
+
+        def found(hit) -> None:
+            nonlocal remaining
+            if not alive():
+                return
+            if not hit.numberOfMatches():
+                self.show_status(f"source match · {result['path']}:{result['line_number']} · see search snippet")
+                return
+            remaining -= 1
+            if remaining > 0 and hit.activeMatch() < hit.numberOfMatches():
+                view.document_page.findText(text, QWebEnginePage.FindFlag(0), found)
+            else:
+                self.show_status(f"match · {result['path']}:{result['line_number']}")
+
+        def cleared(_hit) -> None:
+            if alive():
+                view.document_page.findText(text, QWebEnginePage.FindFlag(0), found)
+
+        view.document_page.findText("", QWebEnginePage.FindFlag(0), cleared)
 
     # ── Contents (TOC) ──────────────────────────────────────────────
 
@@ -838,6 +990,7 @@ class MainWindow(QMainWindow):
             self.restoreState(state)
 
     def closeEvent(self, event: QCloseEvent) -> None:  # noqa: N802 (Qt API)
+        self.search_panel.cancel()
         self._save_session()
         self._settings.geometry = self.saveGeometry()
         self._settings.window_state = self.saveState()

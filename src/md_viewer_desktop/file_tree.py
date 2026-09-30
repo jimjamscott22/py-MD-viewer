@@ -9,9 +9,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PyQt6.QtCore import QModelIndex, Qt, pyqtSignal
+from PyQt6.QtCore import QModelIndex, QPoint, Qt, pyqtSignal
 from PyQt6.QtGui import QMouseEvent, QStandardItem, QStandardItemModel
-from PyQt6.QtWidgets import QAbstractItemView, QApplication, QTreeView
+from PyQt6.QtWidgets import QAbstractItemView, QApplication, QMenu, QTreeView
 
 from md_preview_core.files import build_file_tree
 
@@ -24,6 +24,9 @@ class FileTree(QTreeView):
 
     fileActivated = pyqtSignal(str)  # relative posix path
     fileActivatedInNewTab = pyqtSignal(str)
+    createRequested = pyqtSignal(object, str)  # root + relative directory (empty for root)
+    renameRequested = pyqtSignal(object, str)
+    trashRequested = pyqtSignal(object, str)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -37,6 +40,38 @@ class FileTree(QTreeView):
         self.activated.connect(self._on_activated)
         self.clicked.connect(self._on_activated)
         self._base_dir: Path | None = None
+        self._filter_text = ""
+        self._expanded_before_filter: set[str] = set()
+        self._selection_path: str | None = None
+        self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.customContextMenuRequested.connect(self._show_context_menu)
+
+    def context_menu(self, index: QModelIndex) -> QMenu:
+        # Capture paths now: watcher rebuilds can invalidate the index while
+        # the menu is open. No selection change or document navigation needed.
+        path = index.data(PATH_ROLE) if index.isValid() else ""
+        root = self._base_dir
+        is_file = index.isValid() and not index.data(IS_DIR_ROLE)
+        directory = Path(path).parent.as_posix() if is_file else path
+        if directory == ".":
+            directory = ""
+        menu = QMenu(self)
+        create = menu.addAction("New Markdown File…")
+        create.setEnabled(self._base_dir is not None)
+        create.triggered.connect(lambda: self.createRequested.emit(root, directory))
+        menu.addSeparator()
+        rename = menu.addAction("Rename…")
+        rename.setEnabled(is_file)
+        rename.triggered.connect(lambda: self.renameRequested.emit(root, path))
+        trash = menu.addAction("Move to Trash…")
+        trash.setEnabled(is_file)
+        trash.triggered.connect(lambda: self.trashRequested.emit(root, path))
+        return menu
+
+    def _show_context_menu(self, position: QPoint) -> None:
+        menu = self.context_menu(self.indexAt(position))
+        menu.exec(self.viewport().mapToGlobal(position))
+        menu.deleteLater()
 
     @property
     def base_dir(self) -> Path | None:
@@ -44,11 +79,16 @@ class FileTree(QTreeView):
 
     def set_base_dir(self, base_dir: Path | None) -> None:
         self._base_dir = base_dir
+        self._expanded_before_filter.clear()
+        self._selection_path = None
         self.rebuild(keep_expanded=False)
 
     def rebuild(self, *, keep_expanded: bool = True) -> None:
-        expanded = self._expanded_paths() if keep_expanded else set()
-        selected = self.selected_path()
+        expanded = set()
+        selected = None
+        if keep_expanded:
+            expanded = self._expanded_before_filter if self._filter_text else self._expanded_paths()
+            selected = self.selected_path() or self._selection_path
         self._model.clear()
         if self._base_dir is None:
             return
@@ -57,8 +97,43 @@ class FileTree(QTreeView):
             index = self._find(path)
             if index.isValid():
                 self.expand(index)
+        self._apply_filter()
         if selected:
             self.select_path(selected)
+
+    def set_filter_text(self, text: str) -> None:
+        """Match literal, case-insensitive relative paths without rescanning disk."""
+        text = text.casefold()
+        if text == self._filter_text:
+            return
+        if not self._filter_text:
+            self._expanded_before_filter = self._expanded_paths()
+            self._selection_path = self.selected_path() or self._selection_path
+        self._filter_text = text
+        self._apply_filter()
+        if not text:
+            self.collapseAll()
+            for path in self._expanded_before_filter:
+                index = self._find(path)
+                if index.isValid():
+                    self.expand(index)
+            self._expanded_before_filter.clear()
+        self.select_path(self._selection_path)
+
+    def _apply_filter(self, parent: QStandardItem | None = None) -> bool:
+        parent = parent if parent is not None else self._model.invisibleRootItem()
+        any_match = False
+        for row in range(parent.rowCount()):
+            item = parent.child(row)
+            if item.data(IS_DIR_ROLE):
+                matches = self._apply_filter(item)
+            else:
+                matches = self._filter_text in item.data(PATH_ROLE).casefold()
+            self.setRowHidden(row, item.index().parent(), not matches)
+            if self._filter_text and matches and item.data(IS_DIR_ROLE):
+                self.expand(item.index())
+            any_match = any_match or matches
+        return any_match
 
     def _add_nodes(self, parent: QStandardItem, tree: dict, prefix: str) -> None:
         dirs = sorted((k for k, v in tree.items() if isinstance(v, dict)), key=str.lower)
@@ -105,12 +180,15 @@ class FileTree(QTreeView):
         return indexes[0].data(PATH_ROLE)
 
     def select_path(self, rel_path: str | None) -> None:
+        self._selection_path = rel_path
         if rel_path is None:
             self.clearSelection()
+            self.setCurrentIndex(QModelIndex())
             return
         index = self._find(rel_path)
-        if not index.isValid():
+        if not index.isValid() or self.isRowHidden(index.row(), index.parent()):
             self.clearSelection()
+            self.setCurrentIndex(QModelIndex())
             return
         parent = index.parent()
         while parent.isValid():

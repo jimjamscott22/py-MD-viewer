@@ -68,3 +68,18 @@ def test_search_markdown_file_returns_context_and_skips_binary(tmp_path):
         }
     ]
     assert files.search_markdown_file(tmp_path, "binary.md", "find", 10) == []
+
+
+def test_content_search_limit_exclusions_and_navigation(tmp_path):
+    (tmp_path / "one.md").write_text("Needle\n\nNeedle\n\nOther NEEDLE", encoding="utf-8")
+    (tmp_path / "node_modules").mkdir()
+    (tmp_path / "node_modules" / "hidden.md").write_text("Needle")
+    (tmp_path / "binary.md").write_bytes(b"\xff")
+    result = files.search_content(tmp_path, "needle", limit=2)
+    assert result["truncated"]
+    assert [hit["line_number"] for hit in result["results"]] == [1, 3]
+    assert [hit["occurrence"] for hit in result["results"]] == [1, 2]
+    assert all(hit["source_line"] == "Needle" for hit in result["results"])
+    assert not files.search_content(tmp_path, "needle", limit=3)["truncated"]
+    assert files.search_content(tmp_path, "n")["results"] == []
+    assert files.search_content(tmp_path, "needle", cancelled=lambda: True)["results"] == []

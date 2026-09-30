@@ -134,6 +134,8 @@ def search_markdown_file(
     rel_path: str,
     query_lower: str,
     result_limit: int,
+    *,
+    include_navigation: bool = False,
 ) -> list[dict]:
     """Return matching lines and context from one Markdown file."""
     target = validate_path(base_dir, rel_path)
@@ -143,6 +145,7 @@ def search_markdown_file(
         return []
 
     matches = []
+    occurrences: dict[str, int] = {}
     for index, line in enumerate(lines):
         if query_lower not in line.lower():
             continue
@@ -158,9 +161,39 @@ def search_markdown_file(
                 "snippet": snippet,
             }
         )
+        if include_navigation:
+            key = line.strip().lower()
+            occurrences[key] = occurrences.get(key, 0) + 1
+            matches[-1].update(source_line=line, occurrence=occurrences[key])
         if len(matches) >= result_limit:
             break
     return matches
+
+
+def search_content(base_dir: Path, query: str, *, limit: int = 50, cancelled=None) -> dict:
+    """Search Markdown source deterministically, with one extra hit for truncation.
+
+    ``cancelled`` is an optional callable checked between files by desktop workers.
+    Navigation metadata leaves the existing web search response unchanged.
+    """
+    if len(query) < 2:
+        return {"results": [], "truncated": False}
+    if limit < 1:
+        raise ValueError("limit must be positive")
+    results = []
+    for path in _iter_markdown_files(base_dir):
+        if cancelled is not None and cancelled():
+            break
+        rel = path.relative_to(base_dir.resolve()).as_posix()
+        try:
+            results.extend(search_markdown_file(
+                base_dir, rel, query.lower(), limit + 1 - len(results), include_navigation=True,
+            ))
+        except PathOutsideBaseError:
+            continue  # A file may have been replaced with an escaping symlink.
+        if len(results) > limit:
+            break
+    return {"results": results[:limit], "truncated": len(results) > limit}
 
 
 __all__ = [
@@ -172,5 +205,6 @@ __all__ = [
     "invalidate_file_cache",
     "scan_files",
     "search_markdown_file",
+    "search_content",
     "validate_path",
 ]
