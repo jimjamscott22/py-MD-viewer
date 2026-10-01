@@ -38,7 +38,7 @@ from PyQt6.QtWebEngineCore import (
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 
 from md_preview_core.files import PathOutsideBaseError, validate_path
-from md_preview_core.renderer import render_markdown_cached_with_meta
+from md_preview_core.renderer import render_markdown_cached_with_meta, render_markdown_with_meta
 
 SCHEME = "mdview"
 DOC_HOST = "doc"
@@ -184,8 +184,12 @@ def resolve_request(
     host: str,
     path: str,
     doc_theme: str,
+    overrides: dict[Path, str] | None = None,
 ) -> Response:
     """Map an ``mdview://<host><path>`` request to a response body.
+
+    ``overrides`` maps resolved ``.md`` paths to unsaved editor text, rendered
+    instead of the file on disk (live preview).
 
     Raises :class:`PathOutsideBaseError` for traversal attempts and
     :class:`NotFound` for anything missing.
@@ -218,7 +222,10 @@ def resolve_request(
                 _message_page(rel, f"not found · {rel}", doc_theme, error=True), "text/html"
             )
         try:
-            content, metadata = render_markdown_cached_with_meta(target)
+            if overrides and target in overrides:
+                content, metadata = render_markdown_with_meta(overrides[target])
+            else:
+                content, metadata = render_markdown_cached_with_meta(target)
         except (OSError, UnicodeDecodeError) as exc:
             return Response(
                 _message_page(rel, f"cannot read {rel}: {exc}", doc_theme, error=True),
@@ -263,6 +270,7 @@ class SchemeHandler(QWebEngineUrlSchemeHandler):
         super().__init__(parent)
         self.roots: dict[str, Path] = {}
         self.doc_theme = "jamielab"
+        self.overrides: dict[Path, str] = {}
 
     def add_root(self, root: Path) -> str:
         """Serve ``root`` under its own host; returns the host."""
@@ -275,7 +283,7 @@ class SchemeHandler(QWebEngineUrlSchemeHandler):
         path = url.path(QUrl.ComponentFormattingOption.FullyDecoded)
         try:
             root = self.roots.get(url.host())
-            response = resolve_request(root, url.host(), path, self.doc_theme)
+            response = resolve_request(root, url.host(), path, self.doc_theme, self.overrides)
         except PathOutsideBaseError:
             job.fail(QWebEngineUrlRequestJob.Error.RequestDenied)
             return
@@ -348,6 +356,7 @@ class DocumentView(QWebEngineView):
         self.root: Path | None = None
         self.host = DOC_HOST
         self.current_path: str | None = None
+        self.editor = None  # MarkdownEditor while the tab is being edited
         self.loadFinished.connect(self._restore_scroll)
 
     @property

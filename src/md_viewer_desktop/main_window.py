@@ -29,6 +29,8 @@ from PyQt6.QtWidgets import (
     QLineEdit,
     QMainWindow,
     QMessageBox,
+    QSplitter,
+    QStackedWidget,
     QTabBar,
     QTabWidget,
     QToolBar,
@@ -39,11 +41,19 @@ from PyQt6.QtWidgets import (
 
 from md_preview_core.files import PathOutsideBaseError, invalidate_file_cache, validate_path
 from md_preview_core.renderer import render_markdown
+from md_preview_core.storage import (
+    FileRevisionMismatch,
+    atomic_write_text,
+    get_file_revision,
+    read_text_stable,
+    revision_from_stat,
+)
 
 from . import __version__
 from . import icons
 from . import theme as theme_mod
 from .document_view import SCHEME, DocumentView, SchemeHandler
+from .editor import MarkdownEditor
 from .file_tree import FileTree
 from .file_operations import FileOperations
 from .find_bar import FindBar
@@ -56,6 +66,7 @@ from .watcher_bridge import WatcherBridge
 APP_NAME = "MD Viewer"
 ZOOM_STEPS = (0.5, 0.67, 0.75, 0.8, 0.9, 1.0, 1.1, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0)
 RECENT_SHOWN = 10
+PREVIEW_DEBOUNCE_MS = 300
 
 
 @dataclass(frozen=True)
@@ -107,6 +118,7 @@ class MainWindow(QMainWindow):
         self._session_active = False
         self._pending_search = None
         self._search_navigation = 0
+        self._preview_views: set[DocumentView] = set()
 
         self.setWindowTitle(APP_NAME)
         self.setWindowIcon(icons.app_icon())
@@ -139,7 +151,20 @@ class MainWindow(QMainWindow):
         central_layout.setSpacing(0)
         central_layout.addWidget(self.tabs, 1)
         central_layout.addWidget(self.find_bar)
-        self.setCentralWidget(central)
+        # Editor (left, only while editing) beside the tabs holding the preview.
+        self.editor_stack = QStackedWidget(self)
+        self.editor_stack.hide()
+        self.splitter = QSplitter(Qt.Orientation.Horizontal, self)
+        self.splitter.setChildrenCollapsible(False)
+        self.splitter.addWidget(self.editor_stack)
+        self.splitter.addWidget(central)
+        self.splitter.setStretchFactor(0, 1)
+        self.splitter.setStretchFactor(1, 1)
+        self.setCentralWidget(self.splitter)
+        self._preview_timer = QTimer(self)
+        self._preview_timer.setSingleShot(True)
+        self._preview_timer.setInterval(PREVIEW_DEBOUNCE_MS)
+        self._preview_timer.timeout.connect(self._refresh_previews)
 
         # ── Docks ──
         self.tree = FileTree(self)
@@ -227,6 +252,10 @@ class MainWindow(QMainWindow):
         self.recent_menu = file_menu.addMenu("Open &Recent")
         self.recent_menu.aboutToShow.connect(self._populate_recent_menu)
         file_menu.addSeparator()
+        self.save_action = self._action(
+            file_menu, "&Save", QKeySequence.StandardKey.Save, self.save_current, icon="save"
+        )
+        file_menu.addSeparator()
         self.reload_action = self._action(
             file_menu, "&Reload", QKeySequence.StandardKey.Refresh, self.reload, icon="refresh-cw"
         )
@@ -244,6 +273,11 @@ class MainWindow(QMainWindow):
         self._action(file_menu, "&Quit", QKeySequence.StandardKey.Quit, self.close)
 
         edit_menu = self.menuBar().addMenu("&Edit")
+        self.edit_action = self._action(
+            edit_menu, "&Edit Source", QKeySequence("Ctrl+E"), self.toggle_editor, icon="pencil"
+        )
+        self.edit_action.setCheckable(True)
+        edit_menu.addSeparator()
         self.find_action = self._action(
             edit_menu, "&Find…", QKeySequence.StandardKey.Find, self.find_bar.open_bar, icon="search"
         )
@@ -307,6 +341,8 @@ class MainWindow(QMainWindow):
         toolbar.setIconSize(QSize(icons.ICON_SIZE, icons.ICON_SIZE))
         for action in (self.open_action, self.open_folder_action, self.reload_action):
             toolbar.addAction(action)
+        toolbar.addAction(self.edit_action)
+        toolbar.addAction(self.save_action)
         toolbar.addSeparator()
         toolbar.addAction(self.find_action)
         toolbar.addAction(self.toggle_toc_action)
@@ -427,10 +463,13 @@ class MainWindow(QMainWindow):
                 return view
         return None
 
-    def close_tab(self, index: int) -> None:
+    def close_tab(self, index: int, *, force: bool = False) -> bool:
         view = self.tabs.widget(index)
         if view is None:
-            return
+            return True
+        if not force and not self._confirm_discard(view):
+            return False
+        self._close_editor(view)
         if self.tabs.count() == 1:
             view.show_welcome()
             self._update_tab_label(view)
@@ -440,6 +479,7 @@ class MainWindow(QMainWindow):
             view.deleteLater()
         self._sync_watchers()
         self._save_session()
+        return True
 
     def _cycle_tab(self, step: int) -> None:
         if self.tabs.count() > 1:
@@ -450,7 +490,8 @@ class MainWindow(QMainWindow):
         if index < 0:
             return
         if view.current_path:
-            self.tabs.setTabText(index, Path(view.current_path).name)
+            dirty = "*" if view.editor is not None and view.editor.dirty else ""
+            self.tabs.setTabText(index, f"{Path(view.current_path).name}{dirty}")
             self.tabs.setTabToolTip(index, display_path(view.abs_path))
         else:
             self.tabs.setTabText(index, "welcome")
@@ -462,6 +503,7 @@ class MainWindow(QMainWindow):
         self._sync_tree_selection()
         self._update_title()
         self._refresh_toc()
+        self._sync_editor_pane()
         if not self.find_bar.isHidden():
             for view in self.views():
                 if view is not self.view:
@@ -586,6 +628,9 @@ class MainWindow(QMainWindow):
             self.open_path(Path(folder))
 
     def reload(self) -> None:
+        if self.view.editor is not None and self.view.editor.dirty:
+            self.show_status("unsaved changes · save or close the editor before reloading", "warning")
+            return
         if self.view.current_path:
             self.view.reload_document()
             self.show_status(f"reloaded · {self.view.current_path}")
@@ -674,6 +719,8 @@ class MainWindow(QMainWindow):
             if view.root != root or view.current_path != rel_path:
                 continue
             if (root / rel_path).is_file():
+                if view.editor is not None and not self._sync_editor_with_disk(view):
+                    continue
                 view.reload_document()
                 self.show_status(f"reloaded · {rel_path}")
             else:
@@ -718,7 +765,9 @@ class MainWindow(QMainWindow):
         old, new = root / old_path, root / new_path
         for view in self.views():
             if view.abs_path == old:
+                self._drop_override(view)
                 view.open_document(new.relative_to(view.root).as_posix())
+                self._set_override(view)
                 self._update_tab_label(view)
         self._settings.recent_files = list(dict.fromkeys(
             new if path == old else path for path in self._settings.recent_files
@@ -735,12 +784,208 @@ class MainWindow(QMainWindow):
         target = root / path
         for view in reversed(self.views()):
             if view.abs_path == target:
-                self.close_tab(self.tabs.indexOf(view))
+                self.close_tab(self.tabs.indexOf(view), force=True)
         self._settings.recent_files = [p for p in self._settings.recent_files if p != target]
         invalidate_file_cache()
         self._refresh_tree()
         self.search_panel.refresh()
         self.show_status(f"moved to Trash · {path} · recover from your file manager")
+
+    # ── Editor ──────────────────────────────────────────────────────
+
+    def toggle_editor(self) -> None:
+        view = self.view
+        if view is None or not view.current_path:
+            self.edit_action.setChecked(False)
+            self.show_status("no document open", "warning")
+            return
+        if view.editor is not None:
+            if not self._confirm_discard(view):
+                self.edit_action.setChecked(True)
+                return
+            self._close_editor(view)
+            self._update_tab_label(view)
+            view.reload_document()
+            self._sync_editor_pane()
+            return
+        try:
+            text, file_stat = read_text_stable(view.abs_path)
+        except (OSError, UnicodeDecodeError) as exc:
+            self.edit_action.setChecked(False)
+            self.show_status(f"cannot edit {view.current_path}: {exc}", "error")
+            return
+        editor = MarkdownEditor(text, revision_from_stat(file_stat), self._theme, self)
+        editor.textChanged.connect(self._on_editor_text_changed)
+        editor.modificationChanged.connect(self._on_editor_modified)
+        view.editor = editor
+        self.editor_stack.addWidget(editor)
+        self._sync_editor_pane()
+        editor.setFocus()
+        self.show_status(f"editing · {view.current_path}")
+
+    def _editor_view(self) -> DocumentView | None:
+        sender = self.sender()
+        for view in self.views():
+            if view.editor is sender:
+                return view
+        return None
+
+    def _sync_editor_pane(self) -> None:
+        view = self.view
+        editor = view.editor if view is not None else None
+        if hasattr(self, "edit_action"):  # tab changes fire while the window is built
+            self.edit_action.setChecked(editor is not None)
+        if editor is None:
+            self.editor_stack.hide()
+            return
+        self.editor_stack.setCurrentWidget(editor)
+        if self.editor_stack.isHidden():
+            self.editor_stack.show()
+            width = max(self.splitter.width(), 2)
+            self.splitter.setSizes([width // 2, width - width // 2])
+
+    def _set_override(self, view: DocumentView) -> None:
+        if view.editor is not None and view.abs_path is not None:
+            self._scheme_handler.overrides[view.abs_path.resolve()] = view.editor.toPlainText()
+
+    def _drop_override(self, view: DocumentView) -> None:
+        if view.abs_path is not None:
+            self._scheme_handler.overrides.pop(view.abs_path.resolve(), None)
+
+    def _close_editor(self, view: DocumentView) -> None:
+        editor = view.editor
+        if editor is None:
+            return
+        self._drop_override(view)
+        self._preview_views.discard(view)
+        view.editor = None
+        self.editor_stack.removeWidget(editor)
+        editor.deleteLater()
+        self._sync_editor_pane()
+
+    def _on_editor_text_changed(self) -> None:
+        view = self._editor_view()
+        if view is None:
+            return
+        self._set_override(view)
+        self._preview_views.add(view)
+        self._preview_timer.start()
+
+    def _on_editor_modified(self, _modified: bool) -> None:
+        view = self._editor_view()
+        if view is not None:
+            self._update_tab_label(view)
+
+    def _refresh_previews(self) -> None:
+        views, self._preview_views = self._preview_views, set()
+        for view in views:
+            if view.editor is not None and self.tabs.indexOf(view) >= 0:
+                view.reload_document()
+
+    def _confirm_discard(self, view: DocumentView) -> bool:
+        """Offer to save a dirty editor; ``False`` means the user cancelled."""
+        if view.editor is None or not view.editor.dirty:
+            return True
+        self.tabs.setCurrentWidget(view)
+        box = QMessageBox(
+            QMessageBox.Icon.Warning,
+            APP_NAME,
+            f"Save changes to {Path(view.current_path).name}?",
+            QMessageBox.StandardButton.Save
+            | QMessageBox.StandardButton.Discard
+            | QMessageBox.StandardButton.Cancel,
+            self,
+        )
+        box.setDefaultButton(QMessageBox.StandardButton.Save)
+        answer = box.exec()
+        if answer == QMessageBox.StandardButton.Save:
+            return self.save_view(view)
+        return answer == QMessageBox.StandardButton.Discard
+
+    def save_current(self) -> None:
+        view = self.view
+        if view is None or view.editor is None:
+            self.show_status("nothing to save · press Ctrl+E to edit", "warning")
+            return
+        self.save_view(view)
+
+    def save_view(self, view: DocumentView) -> bool:
+        """Write the buffer with the revision guard. ``True`` once saved."""
+        editor, file = view.editor, view.abs_path
+        if editor is None or file is None:
+            return True
+        expected: str | None = editor.base_revision
+        while True:
+            try:
+                new_stat = atomic_write_text(
+                    file, editor.toPlainText(), expected_revision=expected
+                )
+            except FileRevisionMismatch:
+                choice = self._ask_conflict(view)
+                if choice == "overwrite":
+                    expected = None
+                    continue
+                if choice == "reload":
+                    self._load_from_disk(view)
+                    return False
+                return False
+            except (OSError, UnicodeEncodeError) as exc:
+                self.show_status(f"save failed: {exc}", "error")
+                return False
+            break
+        editor.set_clean(revision_from_stat(new_stat))
+        self._drop_override(view)  # disk now equals the buffer
+        self._update_tab_label(view)
+        self.show_status(f"saved · {view.current_path}")
+        return True
+
+    def _ask_conflict(self, view: DocumentView) -> str:
+        box = QMessageBox(
+            QMessageBox.Icon.Warning,
+            APP_NAME,
+            f"{Path(view.current_path).name} changed on disk since you opened it.",
+            QMessageBox.StandardButton.Cancel,
+            self,
+        )
+        reload_button = box.addButton("Reload", QMessageBox.ButtonRole.DestructiveRole)
+        overwrite_button = box.addButton("Overwrite", QMessageBox.ButtonRole.AcceptRole)
+        box.setDefaultButton(QMessageBox.StandardButton.Cancel)
+        box.exec()
+        clicked = box.clickedButton()
+        if clicked is overwrite_button:
+            return "overwrite"
+        if clicked is reload_button:
+            return "reload"
+        return "cancel"
+
+    def _load_from_disk(self, view: DocumentView) -> bool:
+        try:
+            text, file_stat = read_text_stable(view.abs_path)
+        except (OSError, UnicodeDecodeError) as exc:
+            self.show_status(f"cannot read {view.current_path}: {exc}", "error")
+            return False
+        view.editor.replace_from_disk(text, revision_from_stat(file_stat))
+        self._drop_override(view)
+        return True
+
+    def _sync_editor_with_disk(self, view: DocumentView) -> bool:
+        """React to a disk change under an open editor.
+
+        Returns ``True`` when the preview should reload from disk.
+        """
+        editor = view.editor
+        try:
+            revision = get_file_revision(view.abs_path)
+        except OSError:
+            return False
+        if revision == editor.base_revision:
+            return not editor.dirty  # our own save, or nothing new
+        if editor.dirty:
+            self.show_status(
+                f"changed on disk · {view.current_path} · save to resolve", "warning"
+            )
+            return False
+        return self._load_from_disk(view)
 
     # ── Folder content search ───────────────────────────────────────
 
@@ -990,6 +1235,10 @@ class MainWindow(QMainWindow):
             self.restoreState(state)
 
     def closeEvent(self, event: QCloseEvent) -> None:  # noqa: N802 (Qt API)
+        for view in self.views():
+            if not self._confirm_discard(view):
+                event.ignore()
+                return
         self.search_panel.cancel()
         self._save_session()
         self._settings.geometry = self.saveGeometry()
