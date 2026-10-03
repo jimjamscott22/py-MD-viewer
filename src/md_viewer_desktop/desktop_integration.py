@@ -52,9 +52,14 @@ def targets(base: Path) -> dict[str, Path]:
 def launcher_command(argv0: str | None = None) -> list[str]:
     """How the desktop entry should start this install of md-viewer.
 
-    Prefers the ``md-viewer`` script that is running (``uv tool install`` or
-    the project venv); falls back to ``python -m md_viewer_desktop``.
+    Inside an AppImage that is the ``.AppImage`` file itself (``$APPIMAGE``);
+    the running binary lives in a mount that disappears on exit. Otherwise it
+    prefers the ``md-viewer`` script that is running (``uv tool install`` or
+    the project venv) and falls back to ``python -m md_viewer_desktop``.
     """
+    appimage = os.environ.get("APPIMAGE")
+    if appimage and Path(appimage).is_file():
+        return [str(Path(appimage).absolute())]
     argv0 = argv0 if argv0 is not None else sys.argv[0]
     script = Path(argv0)
     if script.name.startswith("md-viewer") and script.is_file():

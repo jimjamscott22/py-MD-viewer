@@ -82,3 +82,20 @@ def test_cli_install_desktop_needs_no_qt(tmp_path, monkeypatch, capsys):
     assert "wrote" in capsys.readouterr().out
     assert cli.main(["--uninstall-desktop"]) == 0
     assert not (tmp_path / "applications" / "md-viewer.desktop").exists()
+
+
+def test_launcher_prefers_appimage_over_running_binary(tmp_path, monkeypatch):
+    appimage = tmp_path / "MD_Viewer-0.1.0-x86_64.AppImage"
+    appimage.write_text("")
+    mounted = tmp_path / "mount" / "md-viewer"
+    mounted.parent.mkdir()
+    mounted.write_text("")
+    monkeypatch.setenv("APPIMAGE", str(appimage))
+    assert di.launcher_command(str(mounted)) == [str(appimage)]
+
+
+def test_launcher_ignores_stale_appimage_variable(tmp_path, monkeypatch):
+    script = tmp_path / "md-viewer"
+    script.write_text("")
+    monkeypatch.setenv("APPIMAGE", str(tmp_path / "gone.AppImage"))
+    assert di.launcher_command(str(script)) == [str(script)]
