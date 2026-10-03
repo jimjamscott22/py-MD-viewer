@@ -1,6 +1,6 @@
 # Plan: PyQt6 Desktop App (Linux / Ubuntu first)
 
-**Status:** Phases 1–5 implemented (shared core, MVP viewer, Linux polish, editor, file operations and search). Phase 6 (packaging) remains. See §11 onward for where the code departs from this plan.
+**Status:** All six phases implemented (shared core, MVP viewer, Linux polish, editor, file operations and search, packaging). Flatpak and .deb remain optional stretch goals. See §11 onward for where the code departs from this plan.
 **Goal:** A native-feeling Markdown viewer for Ubuntu that opens `.md` files from the file manager, renders them the same way the web app does (Pygments code highlighting, tables, TOC, Mermaid, KaTeX, frontmatter), live-reloads on disk changes, and keeps the editor. It should work fully offline, and wear the jamielab design system (§4.6).
 
 ---
@@ -400,3 +400,12 @@ Where the MVP departs from the plan above, and why:
 - **External changes:** a watcher event under an open editor compares the disk revision with `base_revision`. Equal means our own save. A clean buffer reloads silently, and a dirty one only warns in the status bar (`changed on disk · … · save to resolve`) and keeps the buffer.
 - **Prompts:** closing a dirty tab or the window asks Save / Discard / Cancel. Trashing a file closes its tab without asking. Renaming retargets the override.
 - **Not done:** the phosphor caret (Qt's `QPlainTextEdit` draws the caret from the text colour, so a token-coloured caret needs a custom paint) and scroll sync between editor and preview (listed under *Later*).
+
+## 15. Implementation notes (Phase 6)
+
+- **`uv tool install '.[desktop]'`:** verified from a built wheel into a clean venv outside the checkout: the wheel carries every resource (fonts, vendored Mermaid/KaTeX, CSS, icons, `linux/` desktop and MIME files) and `md-viewer --version`, `--install-desktop` and a headless launch all work. On a clean Ubuntu the only extra step is `sudo apt install libxcb-cursor0 libegl1`.
+- **AppImage:** `scripts/build-appimage.sh` runs PyInstaller (`--onedir`, entry `packaging/md_viewer_entry.py`, `--collect-data` for `md_viewer_desktop` and `md_preview_server` so the package-relative resource paths keep working; Flask and OpenAI are excluded), builds an AppDir with the same `.desktop` file and icon `--install-desktop` uses, and wraps it with `appimagetool` (downloaded into `build/` when missing). `--bundle` stops after the PyInstaller step. The result is about 200 MB (540 MB unpacked).
+- **`AppRun`** exports `QTWEBENGINE_DISABLE_SANDBOX=1`, since the Chromium setuid sandbox can't be shipped in an AppImage.
+- **`--install-desktop` inside an AppImage** writes `$APPIMAGE` into `Exec=`/`TryExec=`. The running binary lives in a temporary mount that vanishes on exit, so using `sys.argv[0]` would leave a dead launcher.
+- **Verified here:** the frozen bundle and the AppImage both start (`--version` and a headless launch with a Mermaid document) with no errors. **Not verified:** a clean Ubuntu 24.04 VM with a real display, and visual rendering inside the frozen build. Do that check on a desktop session before publishing a release.
+- **Licensing (§9):** the PyQt6 GPL question stays open. It now matters, because the AppImage is a distributable binary. Either release the app under GPL-compatible terms or switch to PySide6 (LGPL) before sharing it publicly.

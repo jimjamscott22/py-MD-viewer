@@ -121,7 +121,23 @@ After that, double-clicking a `.md` file in Nautilus opens it in MD Viewer (in t
 
 On Ubuntu, Qt's xcb plugin needs `sudo apt install libxcb-cursor0`. If the document area stays blank (some VMs and NVIDIA setups), run with `--safe-mode` to disable GPU acceleration. On Wayland, `QT_QPA_PLATFORM=xcb` is the fallback if rendering glitches.
 
-The roadmap is in [`docs/desktop-pyqt6-plan.md`](docs/desktop-pyqt6-plan.md). The editor and packaging remain for later phases.
+### Install without cloning (Ubuntu / Linux)
+
+```bash
+# Option 1: uv (recommended). Installs from a checkout or a built wheel.
+sudo apt install libxcb-cursor0 libegl1      # Qt runtime libraries on a clean Ubuntu
+uv tool install '.[desktop]'
+md-viewer --install-desktop
+
+# Option 2: a single-file AppImage (about 200 MB, no Python or uv needed)
+scripts/build-appimage.sh                    # writes dist/MD_Viewer-<version>-x86_64.AppImage
+chmod +x dist/MD_Viewer-*.AppImage
+./dist/MD_Viewer-*.AppImage --install-desktop   # menu entry points at the AppImage file
+```
+
+The AppImage still needs the host's `libxcb-cursor0` and `libegl1` (`sudo apt install libxcb-cursor0 libegl1`). Build it on the oldest Ubuntu you want to support (the bundle links against the build machine's glibc). On a host without FUSE, run it with `APPIMAGE_EXTRACT_AND_RUN=1`. The AppImage sets `QTWEBENGINE_DISABLE_SANDBOX=1` because Chromium's setuid sandbox helper can't ship inside one.
+
+The roadmap is in [`docs/desktop-pyqt6-plan.md`](docs/desktop-pyqt6-plan.md). Every phase is implemented except the Flatpak/.deb stretch goals.
 
 Vendored front-end assets are pinned in `scripts/vendor_assets.py`. To bump one, change the version there and run `uv run python scripts/vendor_assets.py`.
 
