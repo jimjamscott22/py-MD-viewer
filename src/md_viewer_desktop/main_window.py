@@ -602,6 +602,10 @@ class MainWindow(QMainWindow):
             view = self.view
             if new_tab and view.current_path is not None:
                 view = self._new_tab()
+        if view.editor is not None:
+            if not self._confirm_discard(view):
+                return False
+            self._close_editor(view)
         view.open_document(rel_path, fragment, root=root, host=self._scheme_handler.add_root(root))
         self.tabs.setCurrentWidget(view)
         self._update_tab_label(view)
@@ -875,6 +879,8 @@ class MainWindow(QMainWindow):
         view = self._editor_view()
         if view is not None:
             self._update_tab_label(view)
+            if view is self.view:
+                self._update_title()
 
     def _refresh_previews(self) -> None:
         views, self._preview_views = self._preview_views, set()
@@ -1208,7 +1214,8 @@ class MainWindow(QMainWindow):
 
     def _update_title(self) -> None:
         if self.view is not None and self.view.current_path:
-            self.setWindowTitle(f"{Path(self.view.current_path).name} — {APP_NAME}")
+            dirty = "*" if self.view.editor is not None and self.view.editor.dirty else ""
+            self.setWindowTitle(f"{dirty}{Path(self.view.current_path).name} — {APP_NAME}")
         elif self.base_dir:
             self.setWindowTitle(f"{self.base_dir.name or self.base_dir} — {APP_NAME}")
         else:

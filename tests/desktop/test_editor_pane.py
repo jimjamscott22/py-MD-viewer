@@ -144,3 +144,28 @@ def test_highlighter_tracks_fenced_blocks(qapp):
     doc.setPlainText("```py\n# not a heading\n```\n# real")
     highlighter.rehighlight()
     assert [doc.findBlockByNumber(i).userState() for i in range(4)] == [1, 1, 0, 0]
+
+
+def test_dirty_marks_window_title(window):
+    window.toggle_editor()
+    edit(window, "# Changed\n")
+    assert window.windowTitle().startswith("*a.md")
+    assert window.save_view(window.view)
+    assert window.windowTitle().startswith("a.md")
+
+
+def test_replacing_dirty_document_prompts(window, monkeypatch):
+    (window.base / "b.md").write_text("# B\n", encoding="utf-8")
+    window.toggle_editor()
+    edit(window, "unsaved\n")
+    root = window.base
+    answer(monkeypatch, QMessageBox.StandardButton.Cancel)
+    assert not window._show_document(root, "b.md")
+    assert window.view.current_path == "a.md"
+    assert window.view.editor.dirty
+    answer(monkeypatch, QMessageBox.StandardButton.Save)
+    assert window._show_document(root, "b.md")
+    assert (root / "a.md").read_text(encoding="utf-8") == "unsaved\n"
+    assert window.view.current_path == "b.md"
+    assert window.view.editor is None
+    assert not window._scheme_handler.overrides
