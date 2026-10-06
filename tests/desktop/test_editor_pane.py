@@ -154,6 +154,16 @@ def test_dirty_marks_window_title(window):
     assert window.windowTitle().startswith("a.md")
 
 
+def test_discarding_editor_clears_dirty_title(window, monkeypatch):
+    window.toggle_editor()
+    edit(window, "# Changed\n")
+    assert window.windowTitle().startswith("*a.md")
+    answer(monkeypatch, QMessageBox.StandardButton.Discard)
+    window.toggle_editor()
+    assert window.view.editor is None
+    assert window.windowTitle().startswith("a.md")
+
+
 def test_replacing_dirty_document_prompts(window, monkeypatch):
     (window.base / "b.md").write_text("# B\n", encoding="utf-8")
     window.toggle_editor()
