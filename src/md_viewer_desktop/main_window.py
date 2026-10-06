@@ -866,6 +866,7 @@ class MainWindow(QMainWindow):
         self.editor_stack.removeWidget(editor)
         editor.deleteLater()
         self._sync_editor_pane()
+        self._update_title()
 
     def _on_editor_text_changed(self) -> None:
         view = self._editor_view()
