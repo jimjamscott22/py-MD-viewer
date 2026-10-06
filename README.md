@@ -239,4 +239,6 @@ py-MD-viewer/
 
 ## License
 
-MIT
+GPL-3.0-or-later. See [LICENSE](LICENSE).
+
+Bundled third-party assets (Mermaid, KaTeX, IBM Plex Mono, Lucide) keep their own licenses, shipped next to the files under `src/md_viewer_desktop/resources/`.
