@@ -64,6 +64,20 @@ else:
         loop.exec()
         return result.get("value")
 
+    @pytest.fixture(scope="session")
+    def symlinks(tmp_path_factory):
+        """Skip tests that need symlinks where the OS refuses to create them.
+
+        Windows only allows it with Developer Mode or an elevated shell.
+        """
+        probe = tmp_path_factory.mktemp("symlink-probe")
+        target = probe / "target"
+        target.touch()
+        try:
+            (probe / "link").symlink_to(target)
+        except (OSError, NotImplementedError):
+            pytest.skip("symlinks are not available (Windows needs Developer Mode)")
+
     @pytest.fixture
     def helpers():
         return type("Helpers", (), {"wait_until": staticmethod(wait_until), "run_js": staticmethod(run_js)})

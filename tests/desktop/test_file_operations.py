@@ -61,7 +61,7 @@ def test_collisions_preserve_both_files(tmp_path):
     assert (tmp_path / "two.md").read_text() == "two"
 
 
-def test_paths_cannot_escape_or_mutate_symlink_targets(tmp_path):
+def test_paths_cannot_escape_or_mutate_symlink_targets(symlinks, tmp_path):
     root = tmp_path / "root"
     root.mkdir()
     outside = tmp_path / "outside.md"
