@@ -1,6 +1,7 @@
 """``md-viewer --install-desktop``. Pure Python: runs without the desktop extra."""
 
 import configparser
+from pathlib import Path
 
 from md_viewer_desktop import desktop_integration as di
 from md_viewer_desktop import main as cli
@@ -64,7 +65,8 @@ def test_launcher_prefers_running_script(tmp_path):
     script.write_text("#!/bin/sh\n")
     assert di.launcher_command(str(script)) == [str(script)]
     fallback = di.launcher_command(str(tmp_path / "pytest"))
-    assert fallback[-2:] == ["-m", "md_viewer_desktop"] or fallback[0].endswith("md-viewer")
+    # `.stem` so Windows' `md-viewer.EXE` counts as the md-viewer script.
+    assert fallback[-2:] == ["-m", "md_viewer_desktop"] or Path(fallback[0]).stem.lower() == "md-viewer"
 
 
 def test_data_home_honours_xdg(monkeypatch, tmp_path):

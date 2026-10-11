@@ -63,7 +63,7 @@ def test_rejects_path_traversal(docs, path):
         resolve_request(docs, "doc", path, "jamielab")
 
 
-def test_rejects_symlink_escape(docs, tmp_path):
+def test_rejects_symlink_escape(symlinks, docs, tmp_path):
     (docs / "link.md").symlink_to(tmp_path / "secret.md")
     with pytest.raises(PathOutsideBaseError):
         resolve_request(docs, "doc", "/link.md", "jamielab")
